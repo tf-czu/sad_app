@@ -1,0 +1,12 @@
+train: data/train/images
+val: data/valid/images
+
+nc: 1
+names: ['tree']
+
+roboflow:
+  workspace: sad40
+  project: tree_detection-rdysj
+  version: 1
+  license: MIT
+  url: https://universe.roboflow.com/sad40/tree_detection-rdysj/dataset/1
