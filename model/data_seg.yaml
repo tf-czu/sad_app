@@ -1,0 +1,12 @@
+train: data_seg/train/images
+val: data_seg/valid/images
+
+nc: 1
+names: ['tree']
+
+roboflow:
+  workspace: sad40
+  project: leaf_detection-6q7et
+  version: 1
+  license: MIT
+  url: https://universe.roboflow.com/sad40/leaf_detection-6q7et/dataset/1
