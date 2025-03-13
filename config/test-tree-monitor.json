@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "robot": {
+    "modules": {
+
+      "detector": {
+        "driver": "tree_node:TreeNode",
+        "in": ["pose3d", "color", "depth"],
+        "out": ["tree"],
+        "init": {}
+      }
+
+    },
+    "links": [
+      ["localization.pose3d", "detector.pose3d"],
+      ["oak_camera.depth", "detector.depth"],
+      ["oak_camera.color", "detector.color"]
+    ]
+  }
+}
