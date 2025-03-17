@@ -24,7 +24,7 @@ class Detector:
         :param image: Input image (BGR).
         :return: list of detections [(bbox, polygon, score)
         """
-        results = self.model(image)
+        results = self.model(image, verbose=False)
         detections = []
 
         for result in results:
