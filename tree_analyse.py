@@ -19,6 +19,32 @@ def draw_detections(img, detections, color):
 
     return img
 
+def is_one_tree_only(bbox, canopy_im):
+    x1, y1, x2, y2 = bbox
+    sub_im = canopy_im[y1:y2, x1:x2]
+    sub_im[sub_im != 0] = 1
+    # For each line calculate centroid (medium order)  # yt = sum(y * px_value) / sum(px_values)
+    indices = np.arange(sub_im.shape[0]).reshape((sub_im.shape[0], 1))  # to number lines and set correct mat shape
+    weighted = indices * sub_im  # Order of non zero elements > y
+    sums = weighted.sum(axis=0)  # sum(y * px_value)
+    counts = sub_im.sum(axis=0)  # sum(px_values) in columns
+    with np.errstate(divide='ignore', invalid='ignore'):  # ignore divide by zero warning
+        centroids = np.divide(sums, counts)
+    centroids[np.isnan(centroids)] = 0
+    centroids = np.round(centroids).astype(np.int32)
+    # get number of centroid which are in a non-zero area.
+    num_nz = np.sum(sub_im[centroids, np.arange(sub_im.shape[1])])
+    if num_nz/sub_im.shape[1] > 0.8:
+        print(num_nz/sub_im.shape[1])
+        return True
+    else:
+        print(num_nz / sub_im.shape[1])
+        return False
+
+
+
+
+
 def bbox_area(x1, y1, x2, y2):
     return (x2 - x1) * (y2 -y1)
 
@@ -47,6 +73,7 @@ class TreeAnalyse:
         return trees, draw_detections(draw_detections(img, canopy_detections, (0,0,255)),
                                      tree_detections, (255, 0,0))
 
+
     def filter_and_assign_canopy(self, tree_detections, canopy_detections):
         # filter tree bboxes
         bboxes = [bbox for bbox, __, __ in tree_detections]
@@ -54,7 +81,8 @@ class TreeAnalyse:
         trees = []
         for t_bbox in tree_bboxes:
             tree = self.assign_canopy(t_bbox, canopy_detections)
-            trees.append(tree)
+            if tree is not None:
+                trees.append(tree)
 
         return trees
 
@@ -107,4 +135,8 @@ class TreeAnalyse:
             cv2.drawContours(background, [polygon], -1, color=255, thickness=-1)
         background[mask==1] = 0
         contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return tree_bbox, contours
+        if len(contours) != 0:
+            contours_area = sum([cv2.contourArea(cnt) for cnt in contours])
+            if contours_area/((x2 - x1)*(y2-y1)) > 0.01:  # Require a minimum content of canopy in the tree.
+                debug_ratio = contours_area/((x2 - x1)*(y2-y1))
+                return tree_bbox, contours, debug_ratio, background  # TODO remove background
