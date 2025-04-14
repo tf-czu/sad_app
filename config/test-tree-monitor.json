@@ -14,7 +14,9 @@
     "links": [
       ["localization.pose3d", "detector.pose3d"],
       ["oak_camera.depth", "detector.depth"],
-      ["oak_camera.color", "detector.color"]
+      ["oak_camera.color", "detector.color"],
+      ["oak_camera.depth_seq", "detector.depth_seq"],
+      ["oak_camera.color_seq", "detector.color_seq"]
     ]
   }
 }
