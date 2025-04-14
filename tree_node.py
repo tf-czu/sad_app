@@ -49,13 +49,11 @@ class TreeNode(Node):
         writer = None
         for img, tree_data in zip(self.debug_images, self.debug_trees):
             if tree_data:
-                for tree_bbox, canopy, debug_ratio in tree_data:
+                for tree_bbox, canopy in tree_data:
                     # print(canopy)
                     x1, y1, x2, y2 = tree_bbox
                     cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 0), 2)
                     cv2.drawContours(img, canopy, -1, (0, 255, 0), 2)
-                    if debug_ratio < 0.05:
-                        cv2.drawContours(img, canopy, -1, (0, 255, 255), 2)
             if writer is None:
                 height, width = img.shape[:2]
                 writer = cv2.VideoWriter("tmp_video.mp4",

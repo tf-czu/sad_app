@@ -19,9 +19,9 @@ def draw_detections(img, detections, color):
 
     return img
 
-def is_one_tree_only(bbox, canopy_im):
+def is_one_tree_only(bbox, canopy_bin_im):
     x1, y1, x2, y2 = bbox
-    sub_im = canopy_im[y1:y2, x1:x2]
+    sub_im = canopy_bin_im[y1:y2, x1:x2]
     sub_im[sub_im != 0] = 1
     # For each line calculate centroid (medium order)  # yt = sum(y * px_value) / sum(px_values)
     indices = np.arange(sub_im.shape[0]).reshape((sub_im.shape[0], 1))  # to number lines and set correct mat shape
@@ -35,14 +35,11 @@ def is_one_tree_only(bbox, canopy_im):
     # get number of centroid which are in a non-zero area.
     num_nz = np.sum(sub_im[centroids, np.arange(sub_im.shape[1])])
     if num_nz/sub_im.shape[1] > 0.8:
-        print(num_nz/sub_im.shape[1])
+        # print(num_nz/sub_im.shape[1])
         return True
     else:
-        print(num_nz / sub_im.shape[1])
+        # print(num_nz / sub_im.shape[1])
         return False
-
-
-
 
 
 def bbox_area(x1, y1, x2, y2):
@@ -56,7 +53,7 @@ class TreeAnalyse:
         self.background = np.zeros((im_width, im_height), dtype=np.uint8)
         self.y1_min = im_width * 0.05
         self.y2_max = im_width * 0.95
-        self.min_tree_spacing = 350
+        self.min_tree_spacing = 300
         self.tree_detector = Detector("model/my_models/run6_best_n.pt")
         self.canopy_detector = Detector("model/my_models/run4_best_seg_n.pt")
         # self.tree_detector = Detector("model/my_models/run4_best_m.pt")
@@ -70,59 +67,62 @@ class TreeAnalyse:
 
         trees = self.filter_and_assign_canopy(tree_detections, canopy_detections)
 
-        return trees, draw_detections(draw_detections(img, canopy_detections, (0,0,255)),
-                                     tree_detections, (255, 0,0))
+        # return trees, draw_detections(draw_detections(img, canopy_detections, (0,0,255)),
+        #                             tree_detections, (255, 0,0))
+        return trees, img
 
 
     def filter_and_assign_canopy(self, tree_detections, canopy_detections):
+        # returns list of tree bboxes and assigned canopy [[tree_bbox, canopy], ... ]
         # filter tree bboxes
         bboxes = [bbox for bbox, __, __ in tree_detections]
-        tree_bboxes = self.filter_tree_bboxes(bboxes)
         trees = []
-        for t_bbox in tree_bboxes:
+        for t_bbox in bboxes:
             tree = self.assign_canopy(t_bbox, canopy_detections)
             if tree is not None:
                 trees.append(tree)
 
-        return trees
+        filtered_trees = self.filter_tree_bboxes(trees)
 
-    def filter_tree_bboxes(self, tree_bboxes):
-        tree_bboxes2 = []
-        for (x1, y1, x2, y2) in tree_bboxes:
+        return filtered_trees
+
+    def filter_tree_bboxes(self, trees):
+        trees2 = []
+        for (x1, y1, x2, y2), canopy in trees:
             if y1 >= self.y1_min and y2 < self.y2_max:
-                tree_bboxes2.append([x1, y1, x2, y2])
+                trees2.append([(x1, y1, x2, y2), canopy])
 
-        if len(tree_bboxes2) < 2:
-            return tree_bboxes2
+        if len(trees2) <= 1:
+            return trees2
 
         filtered_trees = []
-        tree_bboxes2 = sorted(tree_bboxes2, key= lambda x: x[1])
-        while len(tree_bboxes2) > 1:
-            x1_1, y1_1, x2_1, y2_1 = tree_bboxes2[0]
-            for x1_2, y1_2, x2_2, y2_2 in tree_bboxes2[1:].copy():
+        trees2 = sorted(trees2, key= lambda x: x[0][1])
+        while len(trees2) > 1:
+            (x1_1, y1_1, x2_1, y2_1), canopy_1 = trees2[0]
+            for (x1_2, y1_2, x2_2, y2_2), canopy_2 in trees2[1:].copy():
                 # test distance between centroids (only for y)
                 if (y1_2 - y1_1 + y2_2 - y2_1)/2 > self.min_tree_spacing:
-                    filtered_trees.append([x1_1, y1_1, x2_1, y2_1])
-                    tree_bboxes2.pop(0)  # delete the first element, already added to result
-                    if len(tree_bboxes2) == 1:  # only last tree in detection, add it as well
-                        filtered_trees.append([x1_2, y1_2, x2_2, y2_2])
+                    filtered_trees.append([(x1_1, y1_1, x2_1, y2_1), canopy_1])
+                    trees2.pop(0)  # delete the first element, already added to result
+                    if len(trees2) == 1:  # only last tree in detection, add it as well
+                        filtered_trees.append([(x1_2, y1_2, x2_2, y2_2), canopy_2])
                     break  # let's continue with next tree
 
                 # if the first tree is bigger, remove the second one.
                 elif bbox_area(x1_1, y1_1, x2_1, y2_1) > bbox_area(x1_2, y1_2, x2_2, y2_2):
-                    tree_bboxes2.pop(1)
+                    trees2.pop(1)
 
                 else:
-                    tree_bboxes2.pop(0)
-                    if len(tree_bboxes2) == 1:
+                    trees2.pop(0)
+                    if len(trees2) == 1:
                         # only the last tree remains and it is bigger than the current tree. Add it.
-                        filtered_trees.append([x1_2, y1_2, x2_2, y2_2])
+                        filtered_trees.append([(x1_2, y1_2, x2_2, y2_2), canopy_2])
                     break  # continue with the next tree
 
             else:
                 # finally add the tree and remove it from the list
-                tree_bboxes2.pop(0)
-                filtered_trees.append([x1_1, y1_1, x2_1, y2_1])
+                trees2.pop(0)
+                filtered_trees.append([(x1_1, y1_1, x2_1, y2_1), canopy_1])
 
         return filtered_trees
 
@@ -134,9 +134,12 @@ class TreeAnalyse:
         for __, polygon, __ in canopy_detections:
             cv2.drawContours(background, [polygon], -1, color=255, thickness=-1)
         background[mask==1] = 0
+        if not is_one_tree_only(tree_bbox, background):
+            return None
+
         contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(contours) != 0:
             contours_area = sum([cv2.contourArea(cnt) for cnt in contours])
             if contours_area/((x2 - x1)*(y2-y1)) > 0.01:  # Require a minimum content of canopy in the tree.
-                debug_ratio = contours_area/((x2 - x1)*(y2-y1))
-                return tree_bbox, contours, debug_ratio, background  # TODO remove background
+                # debug_ratio = contours_area/((x2 - x1)*(y2-y1))
+                return tree_bbox, contours
