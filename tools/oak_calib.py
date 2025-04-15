@@ -88,3 +88,8 @@ with dai.Device() as device:
         l_rgb_extrinsics = np.array(calibData.getCameraExtrinsics(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_A))
         print("\nTransformation matrix of where left Camera is W.R.T RGB Camera's optical center")
         print(l_rgb_extrinsics)
+
+        r_rgb_extrinsics = np.array(
+            calibData.getCameraExtrinsics(dai.CameraBoardSocket.CAM_C, dai.CameraBoardSocket.CAM_A))
+        print("\nTransformation matrix of where right Camera is W.R.T RGB Camera's optical center")
+        print(r_rgb_extrinsics)
