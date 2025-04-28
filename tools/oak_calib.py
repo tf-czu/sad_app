@@ -34,16 +34,13 @@ with dai.Device() as device:
         print(f"\nRGB Camera resized intrinsics... {RGB_RESOLUTION[0]}, {RGB_RESOLUTION[1]} ")
         print(M_rgb)
 
-
-        M_left, width, height = calibData.getDefaultIntrinsics(dai.CameraBoardSocket.CAM_B)
-        print("\nLEFT Camera Default intrinsics...")
-        print(M_left)
-        print(width)
-        print(height)
-
         M_left = np.array(calibData.getCameraIntrinsics(dai.CameraBoardSocket.CAM_B, *DEPTH_RESOLUTION))
         print(f"\nLEFT Camera resized intrinsics...  {DEPTH_RESOLUTION[0]}, {DEPTH_RESOLUTION[1]}")
         print(M_left, "\n")
+
+        M_right = np.array(calibData.getCameraIntrinsics(dai.CameraBoardSocket.CAM_C, *DEPTH_RESOLUTION))
+        print(f"\nRIGHT Camera resized intrinsics...  {DEPTH_RESOLUTION[0]}, {DEPTH_RESOLUTION[1]}")
+        print(M_right, "\n")
 
         D_left = np.array(calibData.getDistortionCoefficients(dai.CameraBoardSocket.CAM_B))
         print("\nLEFT Distortion Coefficients...")
