@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import cv2
 
@@ -22,10 +24,11 @@ def depth_to_rgb_aligned(depth_img, depth_intr, rgb_intr, T, rgb_shape):
             # Deprojection the depth pixel to 3D poit in depth frame
             x = (u - cx_d) * z / fx_d
             y = (v - cy_d) * z / fy_d
-            point_d = np.array([x, y, z, 0])
+            point_d = np.array([x, y, z, 1])
 
             # Convert to RGB frame
             point_rgb = T @ point_d
+
             x_rgb, y_rgb, z_rgb, __ = point_rgb
             # x_rgb, y_rgb, z_rgb, __ = point_d  # if the transformation is skipped.
 
@@ -46,48 +49,55 @@ def depth_to_rgb_aligned(depth_img, depth_intr, rgb_intr, T, rgb_shape):
 
     return aligned_depth
 
+
 if __name__ == "__main__":
     # Got for oak-d-pro-poe 192.168.1.53, left to rgb camera.
     fc = 1551.5
     c_xc = 966.4
     c_yc = 542.9
+
+    color_intr = [[fc, 0, c_xc],
+                  [0, fc, c_yc],
+                  [0, 0, 1]]
+
     # right mono
     fd = 799.9
     c_xd = 635.5
     c_yd = 389.6
 
-    # left mono
-    # fd = 796.8
-    # c_xd = 644.3
-    # c_yd = 360.8
-
-    color_intr = [[fc, 0, c_xc],
-                  [0, fc, c_yc],
-                  [0, 0, 1]]
-    depth_intr = [[fd, 0, c_xd],
+    depth_intr_r = [[fd, 0, c_xd],
                   [0, fd, c_yd],
                   [0, 0, 1]]
+    # left mono
+    fd = 796.8
+    c_xd = 644.3
+    c_yd = 360.8
 
-    T_l = np.array([
-        [9.99942660e-01, 1.45698769e-03, 1.06102219e-02, -3.73109245e+00/1],
-        [-1.62577280e-03, 9.99872029e-01, 1.59166064e-02, - 1.44884959e-02/1],
-        [-1.05856732e-02, -1.59329437e-02, 9.99817014e-01, -2.35053167e-01/1],
+    depth_intr_l = [[fd, 0, c_xd],
+                    [0, fd, c_yd],
+                    [0, 0, 1]]
+
+    T_l = np.array([  # original displacement in cm, to be im meters
+        [9.99942660e-01, 1.45698769e-03, 1.06102219e-02, -3.73109245e+00/100],
+        [-1.62577280e-03, 9.99872029e-01, 1.59166064e-02, - 1.44884959e-02/100],
+        [-1.05856732e-02, -1.59329437e-02, 9.99817014e-01, -2.35053167e-01/100],
         [0, 0, 0, 1]
     ])
 
     T_r = np.array([
-    [9.99974489e-01, -2.38180975e-03, 6.73444010e-03, 3.72088194e+00/1],
-    [2.29958771e-03, 9.99923050e-01, 1.21906763e-02, -4.58627492e-02/1],
-    [-6.76295767e-03, -1.21748783e-02, 9.99903023e-01, -2.50154287e-01/1],
+    [9.99974489e-01, -2.38180975e-03, 6.73444010e-03, 3.72088194e+00/100],
+    [2.29958771e-03, 9.99923050e-01, 1.21906763e-02, -4.58627492e-02/100],
+    [-6.76295767e-03, -1.21748783e-02, 9.99903023e-01, -2.50154287e-01/100],
     [0, 0, 0, 1]
     ])
 
-    data = np.load("test_rgbd.npz")
+    data = np.load(sys.argv[1])
     depth = data["depth"]
     print(depth.shape)
     color = data["img"]
     print(color.shape)
-    aligned_depth = depth_to_rgb_aligned(depth, depth_intr, color_intr, T_l, color.shape)
+    aligned_depth = depth_to_rgb_aligned(depth, depth_intr_r, color_intr, T_r, color.shape)
+    # aligned_depth = depth_to_rgb_aligned(depth, depth_intr_l, color_intr, T_r, color.shape)
     # print(aligned_depth.max())
     aligned_depth[aligned_depth>5000] = 0
     # print(aligned_depth.max())
