@@ -4,48 +4,104 @@ import numpy as np
 import cv2
 
 def depth_to_rgb_aligned(depth_img, depth_intr, rgb_intr, T, rgb_shape):
+    """
+    Original code:
+       for v in range(0, height_d, 1):
+           for u in range(0, width_d, 1):
+               z = depth_img[v, u] / 1000.0  # convert to m
+               if z == 0:
+                   continue
+
+               # Deprojection the depth pixel to 3D poit in depth frame
+               x = (u - cx_d) * z / fx_d
+               y = (v - cy_d) * z / fy_d
+               point_d = np.array([x, y, z, 1])
+
+               # Convert to RGB frame
+               point_rgb = T @ point_d
+
+               x_rgb, y_rgb, z_rgb, __ = point_rgb
+               # x_rgb, y_rgb, z_rgb, __ = point_d  # if the transformation is skipped.
+
+               if z_rgb <= 0:
+                   continue  # point is behind the camera
+
+               # Projection to the RGB frame
+               u_rgb = int((x_rgb * fx_rgb) / z_rgb + cx_rgb)
+               v_rgb = int((y_rgb * fy_rgb) / z_rgb + cy_rgb)
+
+               # Save depth if it is within the frame
+               if 0 <= u_rgb < width_rgb and 0 <= v_rgb < height_rgb:
+                   current = aligned_depth[v_rgb, u_rgb]
+                   z_mm = int(z_rgb * 1000)
+
+                   if current == 0 or z_mm < current:
+                       aligned_depth[v_rgb, u_rgb] = z_mm
+       """
+
     height_d, width_d = depth_img.shape
     height_rgb, width_rgb, __ = rgb_shape
-
-    aligned_depth = np.zeros((height_rgb, width_rgb), dtype=np.uint16)
-
     fx_d, fy_d = depth_intr[0][0], depth_intr[1][1]
     cx_d, cy_d = depth_intr[0][2], depth_intr[1][2]
 
     fx_rgb, fy_rgb = rgb_intr[0][0], rgb_intr[1][1]
     cx_rgb, cy_rgb = rgb_intr[0][2], rgb_intr[1][2]
 
-    for v in range(0, height_d, 1):
-        for u in range(0, width_d, 1):
-            z = depth_img[v, u] / 1000.0  # convert to m
-            if z == 0:
-                continue
+    aligned_depth = np.zeros((height_rgb, width_rgb), dtype=np.uint16)
 
-            # Deprojection the depth pixel to 3D poit in depth frame
-            x = (u - cx_d) * z / fx_d
-            y = (v - cy_d) * z / fy_d
-            point_d = np.array([x, y, z, 1])
+    # Creating coordinate grids for depth image
+    u_d, v_d = np.meshgrid(np.arange(width_d), np.arange(height_d))
 
-            # Convert to RGB frame
-            point_rgb = T @ point_d
+    # Transfer depth data to meters
+    z = depth_img[v_d, u_d] / 1000.0
 
-            x_rgb, y_rgb, z_rgb, __ = point_rgb
-            # x_rgb, y_rgb, z_rgb, __ = point_d  # if the transformation is skipped.
+    # Mask for non zero depth
+    valid_depth_mask = z > 0
 
-            if z_rgb <= 0:
-                continue  # point is behind the camera
+    # Calculation of 3D points in the depth camera coordinate system for valid depths
+    x_d = (u_d[valid_depth_mask] - cx_d) * z[valid_depth_mask] / fx_d
+    y_d = (v_d[valid_depth_mask] - cy_d) * z[valid_depth_mask] / fy_d
+    z_valid = z[valid_depth_mask]
+    ones = np.ones_like(z_valid)
+    points_d = np.stack([x_d, y_d, z_valid, ones], axis=-1)
 
-            # Projection to the RGB frame
-            u_rgb = int((x_rgb * fx_rgb) / z_rgb + cx_rgb)
-            v_rgb = int((y_rgb * fy_rgb) / z_rgb + cy_rgb)
+    # Transforming 3D points into the RGB camera coordinate system
+    points_rgb = points_d @ T.T  # We use T.T for correct multiplication of matrices with vectors as rows
 
-            # Save depth if it is within the frame
-            if 0 <= u_rgb < width_rgb and 0 <= v_rgb < height_rgb:
-                current = aligned_depth[v_rgb, u_rgb]
-                z_mm = int(z_rgb * 1000)
+    x_rgb = points_rgb[:, 0]
+    y_rgb = points_rgb[:, 1]
+    z_rgb = points_rgb[:, 2]
 
-                if current == 0 or z_mm < current:
-                    aligned_depth[v_rgb, u_rgb] = z_mm
+    # Masking points behind an RGB camera
+    valid_rgb_z_mask = z_rgb > 0
+
+    x_rgb_valid = x_rgb[valid_rgb_z_mask]
+    y_rgb_valid = y_rgb[valid_rgb_z_mask]
+    z_rgb_valid = z_rgb[valid_rgb_z_mask]
+
+    # Projection of 3D points into the image plane of an RGB camera
+    u_rgb = np.round((x_rgb_valid * fx_rgb) / z_rgb_valid + cx_rgb).astype(int)
+    v_rgb = np.round((y_rgb_valid * fy_rgb) / z_rgb_valid + cy_rgb).astype(int)
+    z_mm = np.round(z_rgb_valid * 1000).astype(int)
+
+    # Masking points outside the RGB range of an image
+    valid_rgb_coords_mask = (u_rgb >= 0) & (u_rgb < width_rgb) & (v_rgb >= 0) & (v_rgb < height_rgb)
+
+    u_rgb_valid_in_frame = u_rgb[valid_rgb_coords_mask]
+    v_rgb_valid_in_frame = v_rgb[valid_rgb_coords_mask]
+    z_mm_valid_in_frame = z_mm[valid_rgb_coords_mask]
+
+    # Updating aligned_depth using NumPy indexing
+    aligned_depth_flat_indices = np.ravel_multi_index((v_rgb_valid_in_frame, u_rgb_valid_in_frame), aligned_depth.shape)
+
+    # Creating an array for new depths and initializing to zero
+    new_depths = np.zeros(aligned_depth.size, dtype=aligned_depth.dtype)
+    np.put(new_depths, aligned_depth_flat_indices, z_mm_valid_in_frame)
+    new_depths_reshaped = new_depths.reshape(aligned_depth.shape)
+
+    # Update aligned_depth only where the new depth is smaller or the original is 0
+    update_mask = (new_depths_reshaped < aligned_depth) | (aligned_depth == 0)
+    aligned_depth[update_mask] = new_depths_reshaped[update_mask]
 
     return aligned_depth
 
