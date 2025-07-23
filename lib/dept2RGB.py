@@ -3,6 +3,8 @@ import sys
 import numpy as np
 import cv2
 
+from osgar.lib.depth import depth_to_rgb_align
+
 def depth_to_rgb_aligned(depth_img, depth_intr, rgb_intr, T, rgb_shape):
     """
     Original code:
@@ -152,7 +154,8 @@ if __name__ == "__main__":
     print(depth.shape)
     color = data["img"]
     print(color.shape)
-    aligned_depth = depth_to_rgb_aligned(depth, depth_intr_r, color_intr, T_r, color.shape)
+    # aligned_depth = depth_to_rgb_aligned(depth, depth_intr_r, color_intr, T_r, color.shape)
+    aligned_depth = depth_to_rgb_align(depth, depth_intr_r, color_intr, T_r, color.shape)
     # aligned_depth = depth_to_rgb_aligned(depth, depth_intr_l, color_intr, T_r, color.shape)
     # print(aligned_depth.max())
     aligned_depth[aligned_depth>5000] = 0
@@ -167,3 +170,4 @@ if __name__ == "__main__":
     cv2.imshow('RGB and Depth', combined_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    cv2.imwrite("rgbd.png", combined_image)

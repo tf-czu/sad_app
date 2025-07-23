@@ -5,7 +5,7 @@
 import cv2
 import numpy as np
 
-from model.detector import Detector
+from tree_monitor.model.detector import Detector
 
 
 def draw_detections(img, detections, color):
