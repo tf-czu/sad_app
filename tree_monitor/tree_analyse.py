@@ -1,6 +1,7 @@
 """
     Tree analise, detect and filter
 """
+import os.path
 
 import cv2
 import numpy as np
@@ -47,17 +48,15 @@ def bbox_area(x1, y1, x2, y2):
 
 
 class TreeAnalyse:
-    def __init__(self, im_shape):
+    def __init__(self, im_shape, models_path):
         # original image is rotated
         im_width, im_height = im_shape
         self.background = np.zeros((im_width, im_height), dtype=np.uint8)
         self.y1_min = im_width * 0.05
         self.y2_max = im_width * 0.95
         self.min_tree_spacing = 300
-        self.tree_detector = Detector("model/my_models/run6_best_n.pt")
-        self.canopy_detector = Detector("model/my_models/run4_best_seg_n.pt")
-        # self.tree_detector = Detector("model/my_models/run4_best_m.pt")
-        # self.canopy_detector = Detector("model/my_models/run3_best_seg_m.pt")
+        self.tree_detector = Detector(os.path.join(models_path, "best.pt"))
+        self.canopy_detector = Detector(os.path.join(models_path, "best_seg.pt"))
 
 
     def process(self, img):
