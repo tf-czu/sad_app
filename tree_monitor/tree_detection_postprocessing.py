@@ -19,16 +19,10 @@ class TreeDetection:
         im = cv2.imread(os.path.join(self.images_path, im_name))
         assert im.shape == (1080, 1920, 3)
         tree_data, debug_img = self.tree_analyse.process(im)
-        self.draw(debug_img, tree_data, im_name)
+        self.draw(debug_img, im_name)
 
 
-    def draw(self, img, tree_data, im_name):
-        if tree_data:
-            for tree_bbox, canopy in tree_data:
-                # print(canopy)
-                x1, y1, x2, y2 = tree_bbox
-                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                cv2.drawContours(img, canopy, -1, (0, 255, 0), 2)
+    def draw(self, img, im_name):
         cv2.imwrite(os.path.join(self.result_dir, im_name), img)
 
     def run_detection(self):
