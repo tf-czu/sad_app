@@ -10,15 +10,33 @@ from tree_monitor.model.detector import Detector
 
 
 def draw_detections(img, detections, color):
-    for (x1, y1, x2, y2), polygon, conf in detections:
+    for (x1, y1, x2, y2), __, conf in detections:
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        if polygon is not None:
-            # cv2.polylines(image, [polygon], isClosed=False, color=(0, 0, 255), thickness=2)
-            cv2.drawContours(img, [polygon], -1, color=(0, 0, 255), thickness=2)
         label = f"{conf:.2f}"
         cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     return img
+
+
+def draw_polygon_detection(img, detections, color):
+    for (x1, y1, x2, y2), polygon, conf in detections:
+        if polygon is not None:
+            contours = unite_contours(img, [polygon])
+            cv2.drawContours(img, contours, -1, color=color, thickness=2)
+        label = f"{conf:.2f}"
+        cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    return img
+
+
+def unite_contours(img, contours):
+    background = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+    cv2.drawContours(background, contours, -1, color=255, thickness=-1)
+    k = np.ones((3, 3), np.uint8)  # 3x3 kernel
+    background = cv2.morphologyEx(background, cv2.MORPH_OPEN, k)
+    contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours
+
 
 def is_one_tree_only(bbox, canopy_bin_im):
     x1, y1, x2, y2 = bbox
@@ -52,8 +70,8 @@ class TreeAnalyse:
         # original image is rotated
         im_width, im_height = im_shape
         self.background = np.zeros((im_width, im_height), dtype=np.uint8)
-        self.y1_min = im_width * 0.05
-        self.y2_max = im_width * 0.95
+        self.y1_min = im_width * 0.01
+        self.y2_max = im_width * 0.99
         self.min_tree_spacing = 300
         self.tree_detector = Detector(os.path.join(models_path, "best.pt"))
         self.canopy_detector = Detector(os.path.join(models_path, "best_seg.pt"))
@@ -61,14 +79,20 @@ class TreeAnalyse:
 
     def process(self, img):
         assert img.shape[:2] == self.background.shape
+        debug_img = img.copy()
         tree_detections = self.tree_detector.detect(img)
+        debug_img = draw_detections(debug_img, tree_detections, (255, 255, 0))
         canopy_detections = self.canopy_detector.detect(img)
+        debug_img = draw_polygon_detection(debug_img, canopy_detections, (0, 255, 0))
 
         trees = self.filter_and_assign_canopy(tree_detections, canopy_detections)
+        if trees:
+            for tree_bbox, canopy in trees:
+                x1, y1, x2, y2 = tree_bbox
+                cv2.rectangle(debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.drawContours(debug_img, canopy, -1, (0, 0, 255), 2)
 
-        # return trees, draw_detections(draw_detections(img, canopy_detections, (0,0,255)),
-        #                             tree_detections, (255, 0,0))
-        return trees, img
+        return trees, debug_img
 
 
     def filter_and_assign_canopy(self, tree_detections, canopy_detections):
@@ -133,12 +157,13 @@ class TreeAnalyse:
         for __, polygon, __ in canopy_detections:
             cv2.drawContours(background, [polygon], -1, color=255, thickness=-1)
         background[mask==1] = 0
-        if not is_one_tree_only(tree_bbox, background):
-            return None
+
+        k = np.ones((3, 3), np.uint8)  # 3x3 kernel
+        background = cv2.morphologyEx(background, cv2.MORPH_OPEN, k)
 
         contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(contours) != 0:
             contours_area = sum([cv2.contourArea(cnt) for cnt in contours])
-            if contours_area/((x2 - x1)*(y2-y1)) > 0.01:  # Require a minimum content of canopy in the tree.
+            if contours_area/((x2 - x1)*(y2-y1)) > 0.1:  # Require a minimum content of canopy in the tree.
                 # debug_ratio = contours_area/((x2 - x1)*(y2-y1))
                 return tree_bbox, contours
