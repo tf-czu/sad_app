@@ -12,8 +12,8 @@ from tree_monitor.model.detector import Detector
 def draw_detections(img, detections, color):
     for (x1, y1, x2, y2), __, conf in detections:
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        label = f"{conf:.2f}"
-        cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        # label = f"{conf:.2f}"
+        # cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     return img
 
@@ -23,8 +23,8 @@ def draw_polygon_detection(img, detections, color):
         if polygon is not None:
             contours = unite_contours(img, [polygon])
             cv2.drawContours(img, contours, -1, color=color, thickness=2)
-        label = f"{conf:.2f}"
-        cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        # label = f"{conf:.2f}"
+        # cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     return img
 
@@ -83,7 +83,7 @@ class TreeAnalyse:
         tree_detections = self.tree_detector.detect(img)
         debug_img = draw_detections(debug_img, tree_detections, (255, 255, 0))
         canopy_detections = self.canopy_detector.detect(img)
-        debug_img = draw_polygon_detection(debug_img, canopy_detections, (0, 255, 0))
+        # debug_img = draw_polygon_detection(debug_img, canopy_detections, (0, 255, 0))
 
         trees = self.filter_and_assign_canopy(tree_detections, canopy_detections)
         if trees:

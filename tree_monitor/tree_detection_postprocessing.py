@@ -1,8 +1,7 @@
 """
-    TODO
+    Detect of columnar apple trees in postprocessing
 """
 import os
-
 import cv2
 
 from tree_analyse import TreeAnalyse
