@@ -1,0 +1,143 @@
+{
+  "info": {
+    "description": "Minimal COCO test set for canopy matching",
+    "version": "1.0"
+  },
+  "licenses": [],
+  "images": [
+    {
+      "id": 1,
+      "file_name": "im_test_dice0.png",
+      "width": 100,
+      "height": 100
+    },
+    {
+      "id": 2,
+      "file_name": "im_test_dice05.png",
+      "width": 100,
+      "height": 100
+    },
+    {
+      "id": 3,
+      "file_name": "im_test_dice1.png",
+      "width": 100,
+      "height": 100
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "c1"
+    },
+    {
+      "id": 2,
+      "name": "c2"
+    },
+    {
+      "id": 3,
+      "name": "canopy"
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "iscrowd": 0,
+      "segmentation": [
+        [
+          60,
+          10,
+          79,
+          10,
+          79,
+          29,
+          60,
+          29
+        ]
+      ],
+      "bbox": [
+        60,
+        10,
+        20,
+        20
+      ],
+      "area": 400
+    },
+    {
+      "id": 2,
+      "image_id": 2,
+      "category_id": 1,
+      "iscrowd": 0,
+      "segmentation": [
+        [
+          20,
+          10,
+          39,
+          10,
+          39,
+          29,
+          20,
+          29
+        ]
+      ],
+      "bbox": [
+        20,
+        10,
+        20,
+        20
+      ],
+      "area": 400
+    },
+    {
+      "id": 3,
+      "image_id": 3,
+      "category_id": 1,
+      "iscrowd": 0,
+      "segmentation": [
+        [
+          10,
+          10,
+          29,
+          10,
+          29,
+          29,
+          10,
+          29
+        ]
+      ],
+      "bbox": [
+        10,
+        10,
+        20,
+        20
+      ],
+      "area": 400
+    },
+    {
+      "id": 4,
+      "image_id": 3,
+      "category_id": 1,
+      "iscrowd": 0,
+      "segmentation": [
+        [
+          60,
+          60,
+          69,
+          60,
+          69,
+          69,
+          60,
+          69
+        ]
+      ],
+      "bbox": [
+        60,
+        60,
+        10,
+        10
+      ],
+      "area": 100
+    }
+  ]
+}
