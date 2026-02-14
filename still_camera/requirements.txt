@@ -1,0 +1,5 @@
+pyrealsense2
+opencv-python
+numpy
+pillow
+depthai==2.32.0.0
