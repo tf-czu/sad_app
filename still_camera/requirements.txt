@@ -1,0 +1,5 @@
+pyrealsense2==2.56.5.9235
+opencv-python==4.5.5.64
+numpy==1.26.4
+pillow==12.1.1
+depthai==2.32.0.0

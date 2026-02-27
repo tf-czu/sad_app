@@ -1,0 +1,26 @@
+[
+    {
+        "name": "D405",
+        "type": "realsense",
+        "serial": "218722270084",
+        "width": 1280,
+        "height": 720,
+        "fps": 15
+    },
+    {
+        "name": "D435",
+        "type": "realsense",
+        "serial": "934222071502",
+        "width": 1280,
+        "height": 720,
+        "fps": 15
+    },
+    {
+        "name": "OAK-D",
+        "type": "oak",
+        "serial": "19443010713D732700",
+        "width": 1280,
+        "height": 720,
+        "fps": 15
+    }
+]
