@@ -61,6 +61,16 @@ class RealsenseDevice:
         self.depth_sensor = self.profile.get_device().first_depth_sensor()
         if not self.depth_sensor:
             raise RuntimeError("Could not find a depth sensor on the device.")
+
+        # Setting the Visual Preset mode
+        if self.depth_sensor.supports(rs.option.visual_preset):
+            # For High Density, change to: rs.rs400_visual_preset.high_density
+            preset = rs.rs400_visual_preset.high_accuracy
+            try:
+                self.depth_sensor.set_option(rs.option.visual_preset, int(preset))
+                print("Visual preset set to High Accuracy.")
+            except Exception as e:
+                print(f"Error setting visual preset: {e}")
         
         self.depth_scale = self.depth_sensor.get_depth_scale()
 

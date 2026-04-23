@@ -19,7 +19,7 @@ class App:
 
         self.device = None
         self.is_streaming = False
-        self.preview_w = 960  # Target width, will be adjusted to fit screen
+        self.preview_w = 720  # Target width, will be adjusted to fit screen
         self.preview_size_determined = False
         self.max_depth_m = tk.DoubleVar(value=3.0)
         self.camera_configs = []
