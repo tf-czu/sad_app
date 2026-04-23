@@ -43,7 +43,7 @@
         ],
         "init": {
           "port": "/dev/trailer-enco",
-          "speed": 115200
+          "speed": 9600
         }
       }
 
