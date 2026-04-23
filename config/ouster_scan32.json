@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "robot": {
+    "modules": {
+      "app": {
+          "driver": "osgar.drivers.ouster_lidar:OusterLidar",
+          "init": {
+            "lidar_ip": "192.168.1.94",
+            "lidar_mode": "MODE_2048x10",
+            "azimuth_window": null
+          }
+      },
+
+      "gps_250": {
+        "driver": "gps",
+        "init": {}
+      },
+      "gps_250_serial": {
+        "driver": "serial",
+        "in": ["raw"],
+        "out": ["raw"],
+        "init": {"port": "/dev/gps-250", "speed": 115200}
+      },
+
+      "gps_255": {
+        "driver": "gps",
+        "init": {}
+      },
+      "gps_255_serial": {
+        "driver": "serial",
+        "in": ["raw"],
+        "out": ["raw"],
+        "init": {"port": "/dev/gps-255", "speed": 115200}
+      },
+
+      "enco_serial": {
+        "driver": "serial",
+        "in": [
+          "raw"
+        ],
+        "out": [
+          "raw"
+        ],
+        "init": {
+          "port": "/dev/trailer-enco",
+          "speed": 9600
+        }
+      }
+
+    },
+    "links": [
+      ["gps_250_serial.raw", "gps_250.raw"],
+      ["gps_255_serial.raw", "gps_255.raw"]
+    ]
+  }
+}
