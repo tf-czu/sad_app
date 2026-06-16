@@ -5,14 +5,18 @@ import os
 import cv2
 import json
 
+from ast import literal_eval
+
 from tree_analyse import TreeAnalyse
 
 
 class TreeDetection:
-    def __init__(self, images_path, model_path):
+    def __init__(self, images_path, model_path, out_dir,
+                 margin = 0.01, spacing = 300, min_area = 0.1):
         self.images_path = images_path
-        self.tree_analyse = TreeAnalyse((1080, 1920), model_path)
-        self.result_dir = os.path.join(self.images_path, "results")
+        self.tree_analyse = TreeAnalyse((1080, 1920), model_path, margin=margin,
+                                        min_tree_spacing = spacing, min_area_limit = min_area)
+        self.result_dir = os.path.join(self.images_path, "tmp", out_dir)
         os.makedirs(self.result_dir)
         self.annotations = {}
 
@@ -47,7 +51,32 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('images', help='path to image dir')
     parser.add_argument('--models', help='Path to models', default="tree_monitor/model/my_models/medium/")
+    parser.add_argument('--out_dir', help='Output directory for results', default="results")
+    parser.add_argument('--margin', help='Ignored edge distance, float or list', default="0.01")
+    parser.add_argument('--spacing', help='Spacing between trees (px), int or list of ints', default="300")
+    parser.add_argument('--min-area', help='Required canopy area in bbox, float or list', default="0.1")
     args = parser.parse_args()
 
-    detect = TreeDetection(args.images, args.models)
-    detect.run_detection()
+    margins = literal_eval(args.margin)
+    spacings = literal_eval(args.spacing)
+    min_areas = literal_eval(args.min_area)
+
+    if isinstance(margins, list):
+        for margin in margins:
+            assert isinstance(spacings, int)
+            assert isinstance(min_areas, float)
+            out_dir = f"results_mar_{margin:.3f}"
+            detect = TreeDetection(args.images, args.models, out_dir, margin=margin)
+            detect.run_detection()
+
+    elif isinstance(spacings, list):
+        for spa in spacings:
+            assert isinstance(min_areas, list)
+            for area in min_areas:
+                out_dir = f"results_mar_{spa:03d}_{area:02f}"
+                print(out_dir)
+                detect = TreeDetection(args.images, args.models, out_dir, spacing = spa, min_area = area)
+                detect.run_detection()
+    else:
+        detect = TreeDetection(args.images, args.models, args.out_dir)
+        detect.run_detection()

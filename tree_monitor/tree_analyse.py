@@ -1,5 +1,5 @@
 """
-    Tree analise, detect and filter
+    Tree analyse, detect and filter
 """
 import os.path
 
@@ -66,13 +66,17 @@ def bbox_area(x1, y1, x2, y2):
 
 
 class TreeAnalyse:
-    def __init__(self, im_shape, models_path):
+    def __init__(self, im_shape, models_path,
+                 margin = 0.01, min_tree_spacing= 300, min_area_limit = 0.1):
         # original image is rotated
         im_width, im_height = im_shape
         self.background = np.zeros((im_width, im_height), dtype=np.uint8)
-        self.y1_min = im_width * 0.01
-        self.y2_max = im_width * 0.99
-        self.min_tree_spacing = 300
+        self.y1_min = im_width * margin
+        self.y2_max = im_width * (1-margin)
+        self.min_tree_spacing = min_tree_spacing
+        self.min_area_limit = min_area_limit
+        print(f"Got params: {margin}, {self.min_tree_spacing}, {self.min_area_limit}")
+
         self.tree_detector = Detector(os.path.join(models_path, "best.pt"))
         self.canopy_detector = Detector(os.path.join(models_path, "best_seg.pt"))
 
@@ -164,6 +168,6 @@ class TreeAnalyse:
         contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(contours) != 0:
             contours_area = sum([cv2.contourArea(cnt) for cnt in contours])
-            if contours_area/((x2 - x1)*(y2-y1)) > 0.1:  # Require a minimum content of canopy in the tree.
+            if contours_area/((x2 - x1)*(y2-y1)) > self.min_area_limit:  # Require a minimum content of canopy in the tree.
                 # debug_ratio = contours_area/((x2 - x1)*(y2-y1))
                 return tree_bbox, contours
