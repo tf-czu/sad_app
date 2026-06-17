@@ -67,7 +67,7 @@ def bbox_area(x1, y1, x2, y2):
 
 class TreeAnalyse:
     def __init__(self, im_shape, models_path,
-                 margin = 0.01, min_tree_spacing= 300, min_area_limit = 0.1):
+                 margin = 0.01, min_tree_spacing= 300, min_area_limit = 0.1, verbose = False):
         # original image is rotated
         im_width, im_height = im_shape
         self.background = np.zeros((im_width, im_height), dtype=np.uint8)
@@ -77,34 +77,47 @@ class TreeAnalyse:
         self.min_area_limit = min_area_limit
         print(f"Got params: {margin}, {self.min_tree_spacing}, {self.min_area_limit}")
 
+        self.verbose = verbose
+        self.debug_area_ratio = []
+        self.debug_spacing = []
+        self.debug_img = None
+
         self.tree_detector = Detector(os.path.join(models_path, "best.pt"))
         self.canopy_detector = Detector(os.path.join(models_path, "best_seg.pt"))
 
 
     def process(self, img):
         assert img.shape[:2] == self.background.shape
-        debug_img = img.copy()
+        self.debug_img = img.copy()
         tree_detections = self.tree_detector.detect(img)
-        debug_img = draw_detections(debug_img, tree_detections, (255, 255, 0))
+        self.debug_img = draw_detections(self.debug_img, tree_detections, (255, 255, 0))
         canopy_detections = self.canopy_detector.detect(img)
         # debug_img = draw_polygon_detection(debug_img, canopy_detections, (0, 255, 0))
 
-        trees = self.filter_and_assign_canopy(tree_detections, canopy_detections)
+        tree_bboxes = self.remove_near_the_edge(tree_detections)
+        trees = self.filter_and_assign_canopy(tree_bboxes, canopy_detections)
         if trees:
             for tree_bbox, canopy in trees:
                 x1, y1, x2, y2 = tree_bbox
-                cv2.rectangle(debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                cv2.drawContours(debug_img, canopy, -1, (0, 0, 255), 2)
+                cv2.rectangle(self.debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.drawContours(self.debug_img, canopy, -1, (0, 0, 255), 2)
 
-        return trees, debug_img
+        return trees, self.debug_img
 
+    def remove_near_the_edge(self, tree_detections):
+        bboxes = [bbox for bbox, __, __ in tree_detections]
+        ret = []
+        for (x1, y1, x2, y2) in bboxes:
+            if y1 >= self.y1_min and y2 < self.y2_max:
+                ret.append((x1, y1, x2, y2))
 
-    def filter_and_assign_canopy(self, tree_detections, canopy_detections):
+        return ret
+
+    def filter_and_assign_canopy(self, tree_bboxes, canopy_detections):
         # returns list of tree bboxes and assigned canopy [[tree_bbox, canopy], ... ]
         # filter tree bboxes
-        bboxes = [bbox for bbox, __, __ in tree_detections]
         trees = []
-        for t_bbox in bboxes:
+        for t_bbox in tree_bboxes:
             tree = self.assign_canopy(t_bbox, canopy_detections)
             if tree is not None:
                 trees.append(tree)
@@ -128,7 +141,9 @@ class TreeAnalyse:
             (x1_1, y1_1, x2_1, y2_1), canopy_1 = trees2[0]
             for (x1_2, y1_2, x2_2, y2_2), canopy_2 in trees2[1:].copy():
                 # test distance between centroids (only for y)
-                if (y1_2 - y1_1 + y2_2 - y2_1)/2 > self.min_tree_spacing:
+                if self.verbose:
+                    self.debug_spacing.append(abs((y1_2 - y1_1 + y2_2 - y2_1)/2))
+                if abs((y1_2 - y1_1 + y2_2 - y2_1)/2) > self.min_tree_spacing:
                     filtered_trees.append([(x1_1, y1_1, x2_1, y2_1), canopy_1])
                     trees2.pop(0)  # delete the first element, already added to result
                     if len(trees2) == 1:  # only last tree in detection, add it as well
@@ -166,8 +181,15 @@ class TreeAnalyse:
         background = cv2.morphologyEx(background, cv2.MORPH_OPEN, k)
 
         contours, __ = cv2.findContours(background, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # print(contours)
         if len(contours) != 0:
             contours_area = sum([cv2.contourArea(cnt) for cnt in contours])
-            if contours_area/((x2 - x1)*(y2-y1)) > self.min_area_limit:  # Require a minimum content of canopy in the tree.
-                # debug_ratio = contours_area/((x2 - x1)*(y2-y1))
+            area_ratio = contours_area / ((x2 - x1) * (y2 - y1))
+            if self.verbose:
+                self.debug_area_ratio.append(area_ratio)
+                if area_ratio <= 0.2:
+                    cv2.drawContours(self.debug_img, contours, -1, (0, 255, 255), 2)
+                    cv2.putText(self.debug_img, f"{area_ratio:.2f}", (x1, y1), cv2.FONT_HERSHEY_SIMPLEX,
+                                1, (255, 255, 255), 2)
+            if area_ratio > self.min_area_limit:  # Require a minimum content of canopy in the tree.
                 return tree_bbox, contours

@@ -5,6 +5,8 @@ import os
 import cv2
 import json
 
+import matplotlib.pyplot as plt
+
 from ast import literal_eval
 
 from tree_analyse import TreeAnalyse
@@ -12,13 +14,14 @@ from tree_analyse import TreeAnalyse
 
 class TreeDetection:
     def __init__(self, images_path, model_path, out_dir,
-                 margin = 0.01, spacing = 300, min_area = 0.1):
+                 margin = 0.01, spacing = 300, min_area = 0.1, verbose = False):
         self.images_path = images_path
         self.tree_analyse = TreeAnalyse((1080, 1920), model_path, margin=margin,
-                                        min_tree_spacing = spacing, min_area_limit = min_area)
+                                        min_tree_spacing = spacing, min_area_limit = min_area, verbose = verbose)
         self.result_dir = os.path.join(self.images_path, "tmp", out_dir)
         os.makedirs(self.result_dir)
         self.annotations = {}
+        self.verbose = verbose
 
     def process_data(self, im_name):
         im = cv2.imread(os.path.join(self.images_path, im_name))
@@ -44,6 +47,31 @@ class TreeDetection:
 
         with open(os.path.join(self.result_dir, 'annotation.json'), 'w', encoding='utf-8') as f:
             json.dump(self.annotations, f, ensure_ascii=False, indent=4)
+
+        if self.verbose:
+            self.process_debug_data()
+
+    def process_debug_data(self):
+        print("debug_area_ratio")
+        print(self.tree_analyse.debug_area_ratio)
+        print("debug_spacing")
+        print(self.tree_analyse.debug_spacing)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
+
+        ax1.hist(self.tree_analyse.debug_area_ratio, bins=30, color='dimgrey', edgecolor='black', alpha=0.7)
+        ax1.set_xlabel('Area ratio')
+        ax1.set_ylabel('Frequency')
+
+        ax2.hist(self.tree_analyse.debug_spacing, bins=30, color='dimgrey', edgecolor='black', alpha=0.7)
+        ax2.set_xlabel('Bounding box distances')
+        ax2.set_ylabel('Frequency')
+
+        # Auto label format (avoid overlap)
+        plt.tight_layout()
+
+        # plt.savefig('histograms.png', dpi=300)
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -78,5 +106,5 @@ if __name__ == "__main__":
                 detect = TreeDetection(args.images, args.models, out_dir, spacing = spa, min_area = area)
                 detect.run_detection()
     else:
-        detect = TreeDetection(args.images, args.models, args.out_dir)
+        detect = TreeDetection(args.images, args.models, args.out_dir, verbose = True)
         detect.run_detection()
