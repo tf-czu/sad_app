@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import cv2
 
-from tree_analyse import TreeAnalyse, is_one_tree_only
+from tree_monitor.tree_analyse import TreeAnalyse, is_one_tree_only
 
 def show_im(im):
     cv2.namedWindow("im", cv2.WINDOW_NORMAL)
@@ -14,24 +14,26 @@ def show_im(im):
 
 class TestTreeAnalysis(unittest.TestCase):
     def test_filter_tree_bboxes(self):
-        c = TreeAnalyse(im_shape=(1080, 1920))
-        tree_bboxes = [(100, 0, 1000, 200), (40, 180, 1000, 300), (100, 800, 1200, 1079)]
-        expected_res = [[40, 180, 1000, 300]]
+        c = TreeAnalyse((1080, 1920), "tree_monitor/model/my_models/medium/")
+        tree_bboxes = [[(100, 0, 1000, 200), None], [(40, 180, 1000, 300), None], [(100, 800, 1200, 1079), None]]
+        expected_res = [[(40, 180, 1000, 300), None]]
         filtered = c.filter_tree_bboxes(tree_bboxes)
         print(filtered)
 
-        tree_bboxes2 = [(100, 100, 1000, 200), (700, 520, 900, 550), (100, 540, 1000, 650), (100, 640, 1000, 800)]
-        expected_res2 = [[100, 100, 1000, 200], [100, 640, 1000, 800]]
+        tree_bboxes2 = [[(100, 100, 1000, 200), None], [(700, 520, 900, 550), None], [(100, 540, 1000, 650), None],
+                        [(100, 640, 1000, 800), None]]
+        expected_res2 = [[(100, 100, 1000, 200), None], [(100, 640, 1000, 800), None]]
         filtered2 = c.filter_tree_bboxes(tree_bboxes2)
         print(filtered2)
 
-        tree_bboxes3 = [(100,110,1000,210), (500,100,1000,220), (500,500,1000,600), (100,520,1000,680)]
-        expected_res3 = [[100,110,1000,210], [100,520,1000,680]]
+        tree_bboxes3 = [[(100,110,1000,210), None], [(500,100,1000,220), None], [(500,500,1000,600), None],
+                        [(100,520,1000,680), None]]
+        expected_res3 = [[(100,110,1000,210), None], [(100,520,1000,680), None]]
         filtered3 = c.filter_tree_bboxes(tree_bboxes3)
         print(filtered3)
 
-        tree_bboxes4 = [(300,100,800,200), (200,180,900,300), (100,280,1000,400)]
-        expected_res4 = [[100,280,1000,400]]
+        tree_bboxes4 = [[(300,100,800,200), None], [(200,180,900,300), None], [(100,280,1000,400), None]]
+        expected_res4 = [[(100,280,1000,400), None]]
         filtered4 = c.filter_tree_bboxes(tree_bboxes4)
         print(filtered4)
 
@@ -43,15 +45,13 @@ class TestTreeAnalysis(unittest.TestCase):
     def test_assign_canopy(self):
         tree_bbox = (400, 100, 1000, 500)
         canopy = [[None,
-                  ( np.array([ [[450, 100]], [[460, 1000]], [[470, 1000]], [[460, 100]] ], dtype=np.int32) ),
+                  ( np.array([ [[350, 100]], [[560, 100]], [[570, 1000]], [[350, 1000]] ], dtype=np.int32) ),
                   None]]
-        c = TreeAnalyse(im_shape=(1080, 1920))
+        c = TreeAnalyse((1080, 1920), "tree_monitor/model/my_models/medium/")
         tree = c.assign_canopy(tree_bbox, canopy)
-        print(tree)
-        bbox, contours, debug_ratio, background = tree  # TODO remove debug things
+        print("tree", tree)
+        bbox, contours = tree
         self.assertEqual(tree_bbox, bbox)
-        print(np.max(background))
-        # show_im(background)
 
     def test_is_one_tree_only(self):
         canopy_im = np.zeros((10, 16), dtype=np.uint8)
