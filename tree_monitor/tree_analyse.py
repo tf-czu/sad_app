@@ -1,6 +1,7 @@
 """
     Tree analyse, detect and filter
 """
+import math
 import os.path
 
 import cv2
@@ -87,6 +88,7 @@ class TreeAnalyse:
 
 
     def process(self, img):
+        assert img is not None
         assert img.shape[:2] == self.background.shape
         self.debug_img = img.copy()
         tree_detections = self.tree_detector.detect(img)
@@ -101,6 +103,15 @@ class TreeAnalyse:
                 x1, y1, x2, y2 = tree_bbox
                 cv2.rectangle(self.debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
                 cv2.drawContours(self.debug_img, canopy, -1, (0, 0, 255), 2)
+
+                canopy_area = sum([cv2.contourArea(cnt) for cnt in canopy])
+                a_30 = int(round(math.sqrt(canopy_area*0.3)))
+                cv2.rectangle(self.debug_img, (x1, y1), (x1 + a_30, y1+a_30), (0, 255, 255), 1)
+                a_05 = int(round(math.sqrt(canopy_area*0.05)))
+                cv2.rectangle(self.debug_img, (x1, y1), (x1 + a_05, y1 + a_05), (0, 255, 255), 1)
+
+        cv2.line(self.debug_img, (0, int(round(self.y1_min))), (1920, int(round(self.y1_min))), (0, 255, 255), 2)
+        cv2.line(self.debug_img, (0, int(round(self.y2_max))), (1920, int(round(self.y2_max))), (0, 255, 255), 2)
 
         return trees, self.debug_img
 
