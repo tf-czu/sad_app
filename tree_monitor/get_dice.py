@@ -41,9 +41,9 @@ def tree_y_from_det(tree_contours):
     ys = []
     for c in tree_contours:
         pts = det_contour_to_xy(c)
-        if len(pts) >= 3:
-            ys.extend([p[1] for p in pts])
-    return float(np.mean(ys)) if ys else float("inf")
+        assert len(pts) >= 3
+        ys.extend([p[1] for p in pts])
+    return float(np.mean(ys))
 
 
 def tree_y_from_ann(polys_xy):
