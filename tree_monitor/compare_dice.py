@@ -105,7 +105,7 @@ def main():
     plt.setp(bp['medians'], color="k")
 
     plt.xticks(positions, xticklabels)
-    plt.ylabel("DICE")
+    plt.ylabel("DSC")
     plt.tight_layout()
     plt.savefig(args.out_plot, dpi=1200)
     plt.close()
