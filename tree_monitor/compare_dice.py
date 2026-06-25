@@ -87,11 +87,17 @@ def main():
     off = 0.4
 
     for g, label in zip(groups, ["Spring", "Autumn", "Autumn2"]):
-        data.append(nano[g])
+        # Print means and number of zero items.
+        sub_data_nano = nano[g]
+        sub_data_medium = medium[g]
+        print(f"{label} nano, mean: {np.mean(sub_data_nano):.3f}, zeros: {np.count_nonzero(sub_data_nano==0)}")
+        print(f"{label} medium, mean: {np.mean(sub_data_medium):.3f}, zeros: {np.count_nonzero(sub_data_medium == 0)}")
+
+        data.append(sub_data_nano)
         positions.append(pos - off)
         xticklabels.append(f"{label}\nnano")
 
-        data.append(medium[g])
+        data.append(sub_data_medium)
         positions.append(pos + off)
         xticklabels.append(f"{label}\nmedium")
 
