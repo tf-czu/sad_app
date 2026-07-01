@@ -1,10 +1,12 @@
 import argparse
 import csv
 import math
+import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import mannwhitneyu
+import scipy.stats as stats
+import scikit_posthocs as sp
 
 
 def group_from_name(s):
@@ -65,17 +67,6 @@ def main():
     nano = load_groups(args.nano)
     medium = load_groups(args.medium)
 
-    print("Mann–Whitney U test (two-sided):")
-    for g in ["sp", "aut", "aut2"]:
-        x = nano[g]
-        y = medium[g]
-        print(f"\nGroup {g}: n_nano={len(x)}, n_medium={len(y)}")
-        if len(x) == 0 or len(y) == 0:
-            print("  Skipped (missing data in one set).")
-            continue
-        res = mannwhitneyu(x, y, alternative="two-sided")
-        print(f"  U = {res.statistic:.3f}, p = {res.pvalue:.6g}")
-
     # Build one boxplot: for each group, two boxes side-by-side (nano vs medium).
     groups = ["sp", "aut", "aut2"]
     data = []
@@ -107,15 +98,44 @@ def main():
 
         pos += 1.0 + gap
 
-    plt.figure(figsize=(6, 4))
+    # --- Statistical Analysis ---
+    # Perform global Kruskal-Wallis test across all 6 datasets
+    kw_stat, kw_p = stats.kruskal(*data)
+    print(f"\nKruskal-Wallis test p-value: {kw_p:.4e}")
+
+    # Perform Dunn's post-hoc test with Holm adjustment
+    p_matrix = sp.posthoc_dunn(data, p_adjust="holm")
+
+    # Generate Compact Letter Display (CLD)
+    cld = sp.compact_letter_display(p_matrix, alpha=0.05)
+
+    plt.figure(figsize=(6, 3))
     bp = plt.boxplot(data, positions=positions, widths=0.35, showfliers=True)
     plt.setp(bp['boxes'], color="k")
     plt.setp(bp['whiskers'], color="k")
     plt.setp(bp['caps'], color="k")
     plt.setp(bp['medians'], color="k")
 
+    # Annotate CLD letters above the upper whiskers/fliers dynamically
+    for ii, pos_x in enumerate(positions):
+        max_y = np.max(data[ii]) if len(data[ii]) > 0 else 1.0
+        plt.text(
+                pos_x,
+                max_y + 0.02,
+                cld[ii + 1],  # scikit-posthocs uses 1-based indexing for groups
+                ha = "center",
+                va = "bottom",
+                fontsize = 10,
+                fontweight = "bold",
+            )
+
     plt.xticks(positions, xticklabels)
-    plt.ylabel("DSC")
+    plt.ylabel("DSC", fontsize=12)
+
+    # Adjust Y-limit slightly to leave room for the significance letters at the top
+    all_max = max([np.max(d) for d in data if len(d) > 0])
+    plt.ylim(top=all_max + 0.08)
+
     plt.tight_layout()
     plt.savefig(args.out_plot, dpi=1200)
     plt.close()
