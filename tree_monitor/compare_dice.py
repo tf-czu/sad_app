@@ -105,6 +105,7 @@ def main():
 
     # Perform Dunn's post-hoc test with Holm adjustment
     p_matrix = sp.posthoc_dunn(data, p_adjust="holm")
+    print(f"P_matrix for Dunn's post-hoc test: {p_matrix}")
 
     # Generate Compact Letter Display (CLD)
     cld = sp.compact_letter_display(p_matrix, alpha=0.05)
