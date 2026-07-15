@@ -1,5 +1,6 @@
 train: data_seg/train/images
 val: data_seg/valid/images
+test: data_seg/test/images
 
 nc: 1
 names: ['tree']
