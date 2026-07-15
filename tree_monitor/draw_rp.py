@@ -34,19 +34,20 @@ def plot_precision_recall_curves(csv_medium, csv_nano):
     precision_med, recall_med = load_data_from_csv(csv_medium)
     precision_nano, recall_nano = load_data_from_csv(csv_nano)
 
-    fig = plt.figure(figsize=(5, 5))
+    fig = plt.figure(figsize=(4, 4))
     ax = fig.add_subplot(111)
 
     ax.plot(recall_nano, precision_nano, "-b", label="Nano model")
     ax.plot(recall_med, precision_med, "-r", label="Medium model")
 
-    ax.set_xlabel('Recall')
-    ax.set_ylabel('Precision')
+    ax.set_xlabel('Recall', fontsize=12)
+    ax.set_ylabel('Precision', fontsize=12)
 
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.0])
 
     plt.legend(loc='lower left')
+    plt.tight_layout()
 
     # plt.show()
     plt.savefig("pr_plot_tmp", dpi=1200)
