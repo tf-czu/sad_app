@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "robot": {
+    "modules": {
+      "app": {
+        "driver": "feno_monitor.rpi_hq_camera:RPiHQCamera",
+        "init": {
+          "sleep_hours": 1.0,
+          "width": 1920,
+          "height": 1080,
+          "flip": false
+        }
+      }
+    },
+    "links": []
+  }
+}
