@@ -21,19 +21,14 @@ class RPiHQCamera:
         self.bus = bus
         bus.register('color')
 
-        self.sleep = config['sleep_hours'] * 3600.0  # hours -> seconds
+        self.sleep = config['sleep']  # seconds
         width = config.get('width', 1920)
         height = config.get('height', 1080)
-        flip = config.get('flip', False)
-
-        from libcamera import Transform
-        transform = Transform(hflip=1, vflip=1) if flip else Transform()
 
         self.cam = Picamera2()
         self.cam.configure(
             self.cam.create_still_configuration(
-                main={"size": (width, height), "format": "RGB888"},
-                transform=transform,
+                main={"size": (width, height), "format": "RGB888"}
             )
         )
         self.cam.start()
