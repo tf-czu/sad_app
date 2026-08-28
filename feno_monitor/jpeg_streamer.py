@@ -64,6 +64,3 @@ class JpegStreamer(Node):
     def request_stop(self):
         self._httpd.shutdown()
         super().request_stop()
-
-
-# vim: expandtab sw=4 ts=4
