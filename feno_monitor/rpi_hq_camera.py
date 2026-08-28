@@ -29,8 +29,9 @@ class RPiHQCamera:
         self.sleep = config['sleep']  # seconds
         self.stop_camera_threshold = config.get('stop_camera_threshold', 30)
         self.camera_warmup = config.get('camera_warmup', 5)  # seconds
-        assert self.sleep >= self.camera_warmup
         self.keep_camera_on = self.sleep < self.stop_camera_threshold
+        if not self.keep_camera_on:
+            assert self.sleep >= self.camera_warmup
         width = config.get('width', 1920)
         height = config.get('height', 1080)
 
