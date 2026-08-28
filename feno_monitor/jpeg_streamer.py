@@ -5,7 +5,6 @@
 """
 
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from osgar.node import Node
@@ -45,7 +44,7 @@ class JpegStreamer(Node):
                             self.wfile.write(jpeg)
                             self.wfile.write(b'\r\n')
                             self.wfile.flush()
-                        time.sleep(streamer.stream_interval)
+                        streamer.sleep(streamer.stream_interval)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
