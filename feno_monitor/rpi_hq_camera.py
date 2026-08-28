@@ -1,6 +1,7 @@
 """
   Osgar driver for Raspberry Pi HQ Camera (Sony IMX477) using picamera2.
-  Captures a JPEG image and publishes it on stream 'color'.
+  Captures a JPEG image and its metadata, publishing them on streams
+  'color' and 'color_metadata' respectively.
 
   Supports two modes, chosen automatically based on config['sleep']:
     - fast mode (short sleep, e.g. streaming at ~5 fps): camera stays on
@@ -12,6 +13,7 @@
 from threading import Thread
 import sys
 import io
+import json
 
 try:
     from picamera2 import Picamera2
@@ -24,7 +26,7 @@ class RPiHQCamera:
     def __init__(self, config, bus):
         self.input_thread = Thread(target=self.run_input, daemon=True)
         self.bus = bus
-        bus.register('color')
+        bus.register('color', 'color_metadata')
 
         self.sleep = config['sleep']  # seconds
         self.stop_camera_threshold = config.get('stop_camera_threshold', 30)
@@ -62,10 +64,18 @@ class RPiHQCamera:
                     if not self.keep_camera_on:
                         self.cam.start()
                         self.bus.sleep(self.camera_warmup)
-                    self.cam.capture_file(stream, format='jpeg')
+
+                    request = self.cam.capture_request()
+                    try:
+                        request.save("main", stream, format='jpeg')
+                        metadata = request.get_metadata()
+                    finally:
+                        request.release()
+
                     if not self.keep_camera_on:
                         self.cam.stop()
                     self.bus.publish('color', stream.getvalue())
+                    self.bus.publish('color_metadata', json.dumps(metadata, default=str).encode())
                 except Exception as e:
                     print(f"Capture failed: {e}", file=sys.stderr)
 
