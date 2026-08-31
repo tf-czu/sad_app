@@ -9,9 +9,14 @@ from tree_monitor.model.detector import Detector
 def process_images_to_annotations(images_folder, output_json, models_path):
     # Supported image extensions
     valid_extensions = ('.jpg', '.jpeg')
-    annotations_dict = {}
+    bbox_annotations = {}
+    contour_annotations = {}
+    cca_annotations = {}
+    tree_detector = Detector(os.path.join(models_path, "best.pt"))
     canopy_detector = Detector(os.path.join(models_path, "best_seg.pt"))
     os.makedirs(os.path.join(images_folder, "tmp_cca"), exist_ok=False)
+    os.makedirs(os.path.join(images_folder, "tmp_bbox"), exist_ok=False)
+    os.makedirs(os.path.join(images_folder, "tmp_contours"), exist_ok=False)
 
     for filename in sorted(os.listdir(images_folder)):
         if not filename.lower().endswith(valid_extensions):
@@ -29,21 +34,51 @@ def process_images_to_annotations(images_folder, output_json, models_path):
         height, width = img.shape[:2]
         assert height == 1080 and width == 1920, (height, width)
 
-        detections = canopy_detector.detect(img)
-        polygons = [poly for __, poly, __ in detections]
-
-        # 2. Draw all polygons onto a blank binary mask to perform CCA
-        binary_mask = np.zeros((height, width), dtype=np.uint8)
-        cv2.drawContours(binary_mask, polygons, -1, color=255, thickness=cv2.FILLED)
-
-        # 3. Calculate the border threshold (1% of the image width)
+        # Calculate the border threshold (1% of the image width)
         border_threshold = int(round(width * 0.01))
 
         # Define the boundary limits for the top and bottom edges
         top_limit = border_threshold
         bottom_limit = height - border_threshold
 
-        # 4. Perform Connected Component Analysis (CCA)
+        # 1. Bbox detections from tree_detector (best.pt)
+        tree_detections = tree_detector.detect(img)
+        bbox_list = []
+        bbox_debug_img = img.copy()
+        for (x1, y1, x2, y2), __, __ in tree_detections:
+            if y1 >= top_limit and y2 <= bottom_limit:
+                bbox_list.append([x1, y1, x2, y2])
+                cv2.rectangle(bbox_debug_img, (x1, y1), (x2, y2), (255, 255, 0), 2)
+        bbox_annotations[filename] = bbox_list
+        cv2.imwrite(os.path.join(images_folder, "tmp_bbox", f"check_{filename}"), bbox_debug_img)
+
+        # 2. Raw contour detections from canopy_detector (best_seg.pt) without CCA
+        canopy_detections = canopy_detector.detect(img)
+        raw_polygons = [poly for __, poly, __ in canopy_detections]
+        contour_list = []
+        contour_debug_img = img.copy()
+        for polygon in raw_polygons:
+            # Boundary check: skip the polygon if even a single point
+            # falls within the 1% width zone of the top or bottom edge
+            if np.any(polygon[:, 1] < top_limit) or np.any(polygon[:, 1] > bottom_limit):
+                continue  # Skip this crown
+
+            # Convert to match the target nested list JSON structure:
+            # [[[[x1, y1]], [[x2, y2]], ...]]
+            formatted_contour = polygon.reshape(-1, 1, 2).tolist()
+            contour_list.append([formatted_contour])
+            cv2.drawContours(contour_debug_img, [polygon], -1, (0, 255, 0), 2)
+        contour_annotations[filename] = contour_list
+        cv2.imwrite(os.path.join(images_folder, "tmp_contours", f"check_{filename}"), contour_debug_img)
+
+        # 3. CCA processing (existing logic)
+        polygons = [poly for __, poly, __ in canopy_detections]
+
+        # Draw all polygons onto a blank binary mask to perform CCA
+        binary_mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.drawContours(binary_mask, polygons, -1, color=255, thickness=cv2.FILLED)
+
+        # Perform Connected Component Analysis (CCA)
         # Using 8-connectivity to group pixels touching diagonally as well
         num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(
             binary_mask, connectivity=8
@@ -64,7 +99,7 @@ def process_images_to_annotations(images_folder, output_json, models_path):
             if np.any(pixel_y < top_limit) or np.any(pixel_y > bottom_limit):
                 continue  # Skip this crown
 
-            # 5. Extract external contours of the connected tree crown
+            # Extract external contours of the connected tree crown
             contours, _ = cv2.findContours(
                 component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
             )
@@ -82,11 +117,15 @@ def process_images_to_annotations(images_folder, output_json, models_path):
             canopy_annotations.append(canopy_list)
 
         # Store the collected crown annotations for the current image
-        annotations_dict[filename] = canopy_annotations
+        cca_annotations[filename] = canopy_annotations
 
-    # 6. Write the final results into a JSON file
+    # Write the final results into JSON files
+    with open(os.path.join(images_folder, "annotations_bbox.json"), 'w', encoding='utf-8') as json_file:
+        json.dump(bbox_annotations, json_file, indent=4)
+    with open(os.path.join(images_folder, "annotations_contours.json"), 'w', encoding='utf-8') as json_file:
+        json.dump(contour_annotations, json_file, indent=4)
     with open(os.path.join(images_folder, output_json), 'w', encoding='utf-8') as json_file:
-        json.dump(annotations_dict, json_file, indent=4)
+        json.dump(cca_annotations, json_file, indent=4)
 
 
 if __name__ == "__main__":
@@ -97,4 +136,4 @@ if __name__ == "__main__":
     parser.add_argument('--models', help='Path to models', default="tree_monitor/model/my_models/medium/")
     args = parser.parse_args()
 
-    process_images_to_annotations(args.images,"annotations_cca.json", args.models)
+    process_images_to_annotations(args.images, "annotations_cca.json", args.models)
