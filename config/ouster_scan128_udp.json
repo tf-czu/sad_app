@@ -1,0 +1,91 @@
+{
+  "version": 2,
+  "robot": {
+    "modules": {
+      "app": {
+          "driver": "osgar.drivers.ouster_lidar:OusterLidarUDP",
+          "in": ["udp_packet", "http_response"],
+          "out": ["http_request"],
+          "init": {
+            "lidar_url": "http://192.168.1.92/api/v1/sensor/config",
+            "config_params": {
+              "lidar_mode": "2048x10",
+              "udp_profile_lidar": "LEGACY"
+            }
+        }
+      },
+      "lidar_udp": {
+          "driver": "udp",
+          "out": ["raw"],
+          "init": {
+              "host": "192.168.1.92",
+              "port": 7502,
+              "bufsize": 100000
+          }
+      },
+      "imu_udp": {
+          "driver": "udp",
+          "out": ["raw"],
+          "init": {
+              "host": "192.168.1.92",
+              "port": 7503,
+              "bufsize": 1024
+        }
+      },
+      "lidar_http": {
+          "driver": "osgar.drivers.logsocket:LogHTTPRequest",
+          "in": ["request"],
+          "out": ["raw"],
+          "init": {
+              "output": true,
+              "timeout": 1.0
+          }
+      },
+
+      "gps_250": {
+        "driver": "gps",
+        "init": {}
+      },
+      "gps_250_serial": {
+        "driver": "serial",
+        "in": ["raw"],
+        "out": ["raw"],
+        "init": {"port": "/dev/gps-250", "speed": 115200}
+      },
+
+      "gps_255": {
+        "driver": "gps",
+        "init": {}
+      },
+      "gps_255_serial": {
+        "driver": "serial",
+        "in": ["raw"],
+        "out": ["raw"],
+        "init": {"port": "/dev/gps-255", "speed": 115200}
+      },
+
+      "enco_serial": {
+        "driver": "serial",
+        "in": [
+          "raw"
+        ],
+        "out": [
+          "raw"
+        ],
+        "init": {
+          "port": "/dev/trailer-enco",
+          "speed": 9600
+        }
+      }
+
+    },
+    "links": [
+      ["gps_250_serial.raw", "gps_250.raw"],
+      ["gps_255_serial.raw", "gps_255.raw"],
+
+      ["lidar_udp.raw", "app.udp_packet"],
+      ["lidar_http.raw", "app.response"],
+      ["app.http_request", "lidar_http.request"]
+    ]
+  }
+}

@@ -57,6 +57,36 @@ def load_groups(csv_path):
     return out
 
 
+def compare_groups_dunn(data, labels):
+    h_stat, p_global = stats.kruskal(*data)
+
+    print(f"{'GLOBAL TEST (K-W)':<25} {'STAT':<10} {'P-VALUE':<10}")
+    print("-" * 50)
+    print(f"{'Result':<25} {h_stat:<10.4f} {p_global:<10.4f}")
+    print("\n")
+
+    if p_global < 0.05:
+        # Dunn test vrací matici p-hodnot
+        # p_adjust může být 'holm', 'bonferroni', 'bh' (Benjamini-Hochberg) atd.
+        p_matrix = sp.posthoc_dunn(data, p_adjust='holm')
+
+        header = f"{'Comparison':<20} | {'Holm-Adj. p':<12} | {'Significant'}"
+        print(header)
+        print("-" * len(header))
+
+        num_groups = len(labels)
+        for i, j in combinations(range(num_groups), 2):
+            # p_matrix je v podstatě numpy array (pokud není vstupem DataFrame)
+            # indexujeme i+1 a j+1, protože scikit-posthocs indexuje od 1
+            p_val = p_matrix.iloc[i, j]
+
+            is_sig = "YES" if p_val < 0.05 else "no"
+            pair_label = f"{labels[i]} vs {labels[j]}"
+            print(f"{pair_label:<20} | {p_val:<12.4f} | {is_sig}")
+    else:
+        print("No significant differences found.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--nano", required=True, help="Nano CSV")

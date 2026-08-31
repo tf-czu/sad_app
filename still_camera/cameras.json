@@ -22,5 +22,12 @@
         "width": 1280,
         "height": 720,
         "fps": 15
+    },
+    {"name": "D435-2",
+        "type": "realsense",
+        "serial": "920312070632",
+        "width": 1280,
+        "height": 720,
+        "fps": 15
     }
 ]

@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "robot": {
+    "modules": {
+      "camera": {
+        "driver": "feno_monitor.rpi_hq_camera:RPiHQCamera",
+        "in": [],
+        "out": ["color"],
+        "init": {
+          "sleep": 1.0,
+          "width": 1920,
+          "height": 1080
+        }
+      },
+      "streamer": {
+        "driver": "feno_monitor.jpeg_streamer:JpegStreamer",
+        "in": ["color"],
+        "out": [],
+        "init": {
+          "host": "0.0.0.0",
+          "port": 8080,
+          "stream_interval": 1.0
+        }
+      }
+    },
+    "links": [
+      ["camera.color", "streamer.color"]
+    ]
+  }
+}
