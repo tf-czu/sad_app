@@ -1,5 +1,6 @@
 train: data/train/images
 val: data/valid/images
+test: data/test/images
 
 nc: 1
 names: ['tree']

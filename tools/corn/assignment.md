@@ -35,3 +35,4 @@ Alternativně by se dalo vyřešit tak, že bychom:
 * Z modelu získali obdobná data jako v případě fáze 1 a následně aplikovali fázi 2 jako v základním použitém řešení
 
 (Alternativní řešení se může hodit později, pokud by se ukázalo, že bychom chtěli postup opakovat.)
+
