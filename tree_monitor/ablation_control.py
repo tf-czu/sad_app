@@ -46,9 +46,12 @@ def process_images_to_annotations(images_folder, output_json, models_path):
         bbox_list = []
         bbox_debug_img = img.copy()
         for (x1, y1, x2, y2), __, __ in tree_detections:
+            # Draw every detected bbox in green first
+            cv2.rectangle(bbox_debug_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             if y1 >= top_limit and y2 <= bottom_limit:
                 bbox_list.append([x1, y1, x2, y2])
-                cv2.rectangle(bbox_debug_img, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                # Redraw the bbox in red if it passed the boundary check
+                cv2.rectangle(bbox_debug_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
         bbox_annotations[filename] = bbox_list
         cv2.imwrite(os.path.join(images_folder, "tmp_bbox", f"check_{filename}"), bbox_debug_img)
 
@@ -58,6 +61,9 @@ def process_images_to_annotations(images_folder, output_json, models_path):
         contour_list = []
         contour_debug_img = img.copy()
         for polygon in raw_polygons:
+            # Draw every detected polygon in green first
+            cv2.drawContours(contour_debug_img, [polygon], -1, (0, 255, 0), 2)
+
             # Boundary check: skip the polygon if even a single point
             # falls within the 1% width zone of the top or bottom edge
             if np.any(polygon[:, 1] < top_limit) or np.any(polygon[:, 1] > bottom_limit):
@@ -67,7 +73,8 @@ def process_images_to_annotations(images_folder, output_json, models_path):
             # [[[[x1, y1]], [[x2, y2]], ...]]
             formatted_contour = polygon.reshape(-1, 1, 2).tolist()
             contour_list.append([formatted_contour])
-            cv2.drawContours(contour_debug_img, [polygon], -1, (0, 255, 0), 2)
+            # Redraw the polygon in red if it passed the boundary check
+            cv2.drawContours(contour_debug_img, [polygon], -1, (0, 0, 255), 2)
         contour_annotations[filename] = contour_list
         cv2.imwrite(os.path.join(images_folder, "tmp_contours", f"check_{filename}"), contour_debug_img)
 
