@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 import scikit_posthocs as sp
+from itertools import combinations
 
 
 def group_from_name(s):
