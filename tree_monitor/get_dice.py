@@ -88,33 +88,25 @@ def match_by_y(det_ys, ann_ys):
     if na == 0:
         return [None] * nd
 
-    det_idx = list(range(nd))
-    ann_idx = list(range(na))
+    # For each detection find its nearest annotation.
+    # Sort detections by distance to nearest annotation (ascending),
+    # so the most confident pairs are assigned first.
+    # Each annotation can be assigned to at most one detection.
+    # If a detection's nearest annotation is already taken, it stays unmatched.
+    nearest = []
+    for i in range(nd):
+        best_j = min(range(na), key=lambda j: abs(det_ys[i] - ann_ys[j]))
+        best_d = abs(det_ys[i] - ann_ys[best_j])
+        nearest.append((best_d, i, best_j))
 
-    # Typical case: 1-2 trees -> simplest: sort and pair
-    if nd == na:
-        det_sorted = sorted(det_idx, key=lambda i: det_ys[i])
-        ann_sorted = sorted(ann_idx, key=lambda j: ann_ys[j])
-        out = [None] * nd
-        for i, j in zip(det_sorted, ann_sorted):
-            out[i] = j
-        return out
+    nearest.sort(key=lambda t: t[0])
 
-    # Greedy unique matching by |y diff|
-    pairs = []
-    for i in det_idx:
-        for j in ann_idx:
-            pairs.append((abs(det_ys[i] - ann_ys[j]), i, j))
-    pairs.sort(key=lambda t: t[0])
-
-    used_det = set()
     used_ann = set()
     out = [None] * nd
-    for _, i, j in pairs:
-        if i in used_det or j in used_ann:
+    for _, i, j in nearest:
+        if j in used_ann:
             continue
         out[i] = j
-        used_det.add(i)
         used_ann.add(j)
 
     return out
