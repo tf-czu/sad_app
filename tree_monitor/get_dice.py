@@ -19,6 +19,20 @@ def det_contour_to_xy(contour):
     return pts
 
 
+def det_tree_to_polys(det_tree):
+    # Normalizes a detection tree into a list of polygons (list of (x,y) points).
+    # Accepts either:
+    #   bbox:      [x1, y1, x2, y2]            -> [ [(x1,y1),(x2,y1),(x2,y2),(x1,y2)] ]
+    #   contours:  [ [[x,y],...], [[x,y],...] ]-> [ [(x,y),...], ... ]
+    if (isinstance(det_tree, (list, tuple)) and len(det_tree) == 4
+            and all(isinstance(v, (int, float)) for v in det_tree)):
+        x1, y1, x2, y2 = det_tree
+        return [[(float(x1), float(y1)), (float(x2), float(y1)),
+                 (float(x2), float(y2)), (float(x1), float(y2))]]
+    # contours format
+    return [det_contour_to_xy(c) for c in det_tree]
+
+
 def coco_poly_to_xy(poly_flat):
     # COCO polygon: [x1,y1,x2,y2,...]
     assert len(poly_flat) % 2 == 0
@@ -37,16 +51,7 @@ def pts_to_cv(pts, w, h):
     return arr.reshape((-1, 1, 2))
 
 
-def tree_y_from_det(tree_contours):
-    ys = []
-    for c in tree_contours:
-        pts = det_contour_to_xy(c)
-        assert len(pts) >= 3
-        ys.extend([p[1] for p in pts])
-    return float(np.mean(ys))
-
-
-def tree_y_from_ann(polys_xy):
+def tree_y_from_polys(polys_xy):
     ys = []
     for pts in polys_xy:
         if len(pts) >= 3:
@@ -54,20 +59,7 @@ def tree_y_from_ann(polys_xy):
     return float(np.mean(ys)) if ys else float("inf")
 
 
-def mask_from_det(tree_contours, w, h):
-    m = np.zeros((h, w), dtype=np.uint8)
-    for c in tree_contours:
-        pts = det_contour_to_xy(c)
-        if len(pts) < 3:
-            continue
-        cv_pts = pts_to_cv(pts, w, h)
-        if cv_pts is None:
-            continue
-        cv2.fillPoly(m, [cv_pts], 1)
-    return m
-
-
-def mask_from_ann(polys_xy, w, h):
+def mask_from_polys(polys_xy, w, h):
     m = np.zeros((h, w), dtype=np.uint8)
     for pts in polys_xy:
         if len(pts) < 3:
@@ -128,12 +120,11 @@ def match_by_y(det_ys, ann_ys):
     return out
 
 
-def draw_debug(out_path, w, h, det_tree, ann_polys_xy, title):
+def draw_debug(out_path, w, h, det_polys_xy, ann_polys_xy, title):
     img = np.full((h, w, 3), 255, dtype=np.uint8)
 
     # detection = green
-    for c in det_tree:
-        pts = det_contour_to_xy(c)
+    for pts in det_polys_xy:
         if len(pts) < 3:
             continue
         cv_pts = pts_to_cv(pts, w, h)
@@ -235,9 +226,12 @@ def main():
             ann_trees = [ann_groups[l]["polys"] for l in ann_labels]
             ann_ids = [ann_groups[l]["ids"] for l in ann_labels]
 
+            # Normalize detections to polygons (bbox or contours)
+            det_polys_list = [det_tree_to_polys(t) for t in det_trees]
+
             # Compute Y positions
-            det_ys = [tree_y_from_det(t) for t in det_trees]
-            ann_ys = [tree_y_from_ann(polys) for polys in ann_trees]
+            det_ys = [tree_y_from_polys(polys) for polys in det_polys_list]
+            ann_ys = [tree_y_from_polys(polys) for polys in ann_trees]
 
             # Match
             det_to_ann = match_by_y(det_ys, ann_ys)
@@ -245,18 +239,18 @@ def main():
             # Precompute masks for annotations (small count -> ok)
             ann_masks = []
             for polys in ann_trees:
-                ann_masks.append(mask_from_ann(polys, W, H))
+                ann_masks.append(mask_from_polys(polys, W, H))
 
             # Iterate detections
-            for di, det_tree in enumerate(det_trees):
-                det_mask = mask_from_det(det_tree, W, H)
+            for di, det_polys in enumerate(det_polys_list):
+                det_mask = mask_from_polys(det_polys, W, H)
                 ai = det_to_ann[di]
 
                 if ai is None:
                     d = 0.0
                     dbg = os.path.join(args.debug_dir, f"{os.path.splitext(image_name)[0]}_det{di}_unmatched.png")
                     title = f"{image_name}\ndet={di} ann=NONE\nDICE=0.0000"
-                    draw_debug(dbg, W, H, det_tree, None, title)
+                    draw_debug(dbg, W, H, det_polys, None, title)
 
                     wcsv.writerow([image_name, di, "NONE", "", f"{det_ys[di]:.3f}", "", f"{d:.6f}", dbg])
                     continue
@@ -268,7 +262,7 @@ def main():
                     f"det={di} ann={ann_labels[ai]} ids={len(ann_ids[ai])}\n"
                     f"det_y={det_ys[di]:.1f} ann_y={ann_ys[ai]:.1f}  DICE={d:.4f}"
                 )
-                draw_debug(dbg, W, H, det_tree, ann_trees[ai], title)
+                draw_debug(dbg, W, H, det_polys, ann_trees[ai], title)
 
                 wcsv.writerow([
                     image_name,
