@@ -221,7 +221,12 @@ class App:
                 # For OAK devices, we don't pre-check availability by connecting, as the
                 # rapid connect/disconnect/connect sequence can cause "device busy" errors.
                 # We will attempt to connect directly and let the device class handle errors.
-                self.device = OakDevice(serial_number=serial)
+                # The hardware model (e.g. 'A' for OAK-D-POE with a separate RGB sensor
+                # on CAM_A) is taken from cameras.json; when absent it is auto-detected.
+                self.device = OakDevice(
+                    serial_number=serial,
+                    model=self.selected_camera_config.get('model'),
+                )
             else:
                 raise ValueError(f"Unknown camera type: {cam_type}")
 

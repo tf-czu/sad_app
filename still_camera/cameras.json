@@ -29,5 +29,16 @@
         "width": 1280,
         "height": 720,
         "fps": 15
+    },
+
+    {
+        "name": "OAK-D-poe",
+        "type": "oak",
+        "serial": "1844301001F17B0E00",
+        "model": "A",
+        "width": 1920,
+        "height": 1080,
+        "fps": 10
     }
+
 ]

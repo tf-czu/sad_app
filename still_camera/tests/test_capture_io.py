@@ -36,7 +36,7 @@ class TestCaptureIO(unittest.TestCase):
         expected_dir_name = "20231027_123000_test12345"
         
         # Call the function
-        capture_path = capture_io.create_capture_directory(base_dir=self.test_dir, serial_number=serial)
+        capture_path = capture_io.create_capture_directory(base_dir=self.test_dir, camera_name=serial)
         
         # Check if the directory was created with the correct name
         expected_path = os.path.join(self.test_dir, expected_dir_name)
