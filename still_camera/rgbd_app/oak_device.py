@@ -203,12 +203,18 @@ class OakDevice:
         left_cam = self.pipeline.create(dai.node.Camera)
         right_cam = self.pipeline.create(dai.node.Camera)
         stereo = self.pipeline.create(dai.node.StereoDepth)
+        video_enc = self.pipeline.create(dai.node.VideoEncoder)
 
         # Color / RGB sensor
         color_cam.setBoardSocket(layout['color'])
         color_cam.setSize(width, height)
-        color_cam.setPreviewSize(width, height)
+        # color_cam.setPreviewSize(width, height)
         color_cam.setFps(fps)
+
+        # Encode the color stream to MJPEG before sending it over PoE/XLink.
+        # Raw/uncompressed frames at this resolution were causing corrupted
+        # (striped) images over the Ethernet link.
+        video_enc.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.MJPEG)
 
         # Left & right mono sensors for stereo depth
         left_cam.setBoardSocket(layout['left'])
@@ -229,7 +235,8 @@ class OakDevice:
         # Linking
         left_cam.video.link(stereo.left)
         right_cam.video.link(stereo.right)
-        color_cam.preview.link(xout_rgb.input)
+        color_cam.video.link(video_enc.input)
+        video_enc.bitstream.link(xout_rgb.input)
         stereo.depth.link(xout_depth.input)
         control_in.out.link(color_cam.inputControl)
 
@@ -238,13 +245,15 @@ class OakDevice:
         left_cam = self.pipeline.create(dai.node.Camera)
         right_cam = self.pipeline.create(dai.node.Camera)
         stereo = self.pipeline.create(dai.node.StereoDepth)
+        video_enc = self.pipeline.create(dai.node.VideoEncoder)
 
         # Properties for Left Camera (provides color and left mono)
         left_cam.setBoardSocket(layout['left'])  # CAM_B is LEFT
         left_cam.setSize(width, height)
         left_cam.setFps(fps)
-        # Configure the 'preview' output for color, which the ISP will generate.
-        left_cam.setPreviewSize(width, height)
+
+        # Encode the color stream to MJPEG before sending it over PoE/XLink.
+        video_enc.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.MJPEG)
 
         # Properties for Right Camera (provides right mono)
         right_cam.setBoardSocket(layout['right'])  # CAM_C is RIGHT
@@ -261,7 +270,8 @@ class OakDevice:
         # Linking
         left_cam.video.link(stereo.left)
         right_cam.video.link(stereo.right)
-        left_cam.preview.link(xout_rgb.input)
+        left_cam.video.link(video_enc.input)
+        video_enc.bitstream.link(xout_rgb.input)
         stereo.depth.link(xout_depth.input)
         control_in.out.link(left_cam.inputControl)
 
@@ -288,6 +298,15 @@ class OakDevice:
 
         if in_rgb is not None and in_depth is not None:
             color_image = in_rgb.getCvFrame()
+            # RGB stream now arrives as an MJPEG bitstream (see VideoEncoder in
+            # the pipeline). Decode it back into a standard BGR numpy array so
+            # every downstream consumer (GUI preview, capture_service, etc.)
+            # keeps working exactly as before.
+            color_image = cv2.imdecode(in_rgb.getData(), cv2.IMREAD_COLOR)
+            if color_image is None:
+                # Corrupted/incomplete JPEG frame - skip this cycle rather
+                # than crashing the caller.
+                return None, None, None
             depth_image = in_depth.getFrame()  # uint16, millimeters
 
             # Create a colorized depth map for visualization.
