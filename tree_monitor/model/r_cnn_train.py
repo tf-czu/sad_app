@@ -121,7 +121,7 @@ def main():
     parser.add_argument("--data-dir", required=True, help="Root directory containing images")
     parser.add_argument("--train-ann", required=True, help="Path to training COCO JSON")
     parser.add_argument("--val-ann", default=None, help="Path to validation COCO JSON")
-    parser.add_argument("--num-classes", type=int, required=True,default=1,
+    parser.add_argument("--num-classes", type=int,default=1,
                         help="Number of CUSTOM classes (EXCLUDING background)")
     parser.add_argument("--max-iter", type=int, default=7000,
                         help="Total number of training iterations (~20-25 epochs for 1200 imgs)")
