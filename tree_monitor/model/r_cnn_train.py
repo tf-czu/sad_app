@@ -205,8 +205,8 @@ def main():
         val_metadata = MetadataCatalog.get(val_ds_name)
 
         # Read the first image found in the data directory
-        sample_file = os.listdir(args.data_dir)[0]
-        img = cv2.imread(os.path.join(args.data_dir, sample_file))
+        sample_file = os.listdir(val_img_dir)[0]
+        img = cv2.imread(os.path.join(val_img_dir, sample_file))
 
         outputs = predictor(img)
         v = Visualizer(
