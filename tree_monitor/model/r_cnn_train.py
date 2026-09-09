@@ -138,12 +138,14 @@ def main():
 
     # 1. Register datasets in COCO format
     train_ds_name = "custom_dataset_train"
-    register_coco_instances(train_ds_name, {}, resolve(args.train_ann), args.data_dir)
+    train_img_dir = os.path.join(args.data_dir, "train")
+    val_img_dir = os.path.join(args.data_dir, "valid")
+    register_coco_instances(train_ds_name, {}, resolve(args.train_ann), train_img_dir)
 
     val_ds_name = None
     if args.val_ann:
         val_ds_name = "custom_dataset_val"
-        register_coco_instances(val_ds_name, {}, resolve(args.val_ann), args.data_dir)
+        register_coco_instances(val_ds_name, {}, resolve(args.val_ann), val_img_dir)
 
     # 2. Configure model and hyperparameters
     cfg = get_cfg()
