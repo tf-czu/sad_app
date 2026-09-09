@@ -111,10 +111,10 @@ def main():
     parser.add_argument("--val-ann", default=None, help="Path to validation COCO JSON")
     parser.add_argument("--num-classes", type=int,default=1,
                         help="Number of CUSTOM classes (EXCLUDING background)")
-    parser.add_argument("--max-iter", type=int, default=3000,
+    parser.add_argument("--max-iter", type=int, default=4000,
                         help="Total number of training iterations (~20-25 epochs for 1200 imgs)")
     parser.add_argument("--batch-size", type=int, default=4, help="Total batch size per iteration")
-    parser.add_argument("--lr", type=float, default=0.00025, help="Base learning rate")
+    parser.add_argument("--lr", type=float, default=0.0001, help="Base learning rate")
     parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers")
     parser.add_argument("--output-dir", default="./output_detectron2", help="Output directory for checkpoints and logs")
     args = parser.parse_args()
@@ -159,6 +159,11 @@ def main():
     cfg.SOLVER.STEPS = (1800, 2550)  # Decay learning rate towards the end
     cfg.SOLVER.GAMMA = 0.1
 
+    # WARMUP: First 300 steps (1 epoch) increases slowly LR from 0
+    cfg.SOLVER.WARMUP_FACTOR = 0.001
+    cfg.SOLVER.WARMUP_ITERS = 300
+    cfg.SOLVER.WARMUP_METHOD = "linear"
+
     # Checkpoint saving and evaluation frequency
     cfg.SOLVER.CHECKPOINT_PERIOD = 150
     if val_ds_name:
@@ -178,7 +183,7 @@ def main():
     # 4. Final Evaluation and Sample Inference
     if val_ds_name:
         print("\n--- Running Final Evaluation ---")
-        cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
+        cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_best.pth")
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # Confidence threshold for inference
 
         evaluator = COCOEvaluator(val_ds_name, output_dir=cfg.OUTPUT_DIR)
