@@ -34,18 +34,7 @@ from detectron2.utils.visualizer import Visualizer, ColorMode
 # Custom Early Stopping Hook
 # --------------------------------------------------------------------------
 class EarlyStoppingHook(HookBase):
-    """
-    Hook for Early Stopping based on validation metrics.
-    Stops training when the tracked metric stops improving after a given patience.
-    """
-
-    def __init__(self, patience=4, metric_name="segm/AP50", min_delta=0.001):
-        """
-        Args:
-            patience (int): Number of evaluations without improvement to wait before stopping.
-            metric_name (str): Metric key in trainer.storage to monitor (e.g., 'segm/AP50', 'bbox/AP').
-            min_delta (float): Minimum change to qualify as an improvement.
-        """
+    def __init__(self, patience=3, metric_name="segm/AP50", min_delta=0.001):
         super().__init__()
         self.patience = patience
         self.metric_name = metric_name
@@ -54,24 +43,24 @@ class EarlyStoppingHook(HookBase):
         self.patience_counter = 0
 
     def after_step(self):
-        # Trigger check only when evaluation has just been executed
         eval_period = self.trainer.cfg.TEST.EVAL_PERIOD
         if eval_period <= 0 or (self.trainer.iter + 1) % eval_period != 0:
             return
 
-        # Read the latest evaluated metric from Storage
         latest_metrics = self.trainer.storage.latest()
         if self.metric_name not in latest_metrics:
-            print(f"\n[EarlyStopping] Warning: Metric '{self.metric_name}' not found in storage. Skipping check.")
             return
 
         current_val, _ = latest_metrics[self.metric_name]
 
         if current_val > self.best_metric + self.min_delta:
             print(
-                f"\n[EarlyStopping] Metric '{self.metric_name}' improved from {self.best_metric:.4f} to {current_val:.4f}. Resetting counter.")
+                f"\n[EarlyStopping] Metric '{self.metric_name}' improved from {self.best_metric:.4f} to {current_val:.4f}. Saving best model...")
             self.best_metric = current_val
             self.patience_counter = 0
+
+            # Save best model
+            self.trainer.checkpointer.save("model_best")
         else:
             self.patience_counter += 1
             print(
@@ -80,7 +69,6 @@ class EarlyStoppingHook(HookBase):
 
             if self.patience_counter >= self.patience:
                 print(f"\n[EarlyStopping] Early stopping triggered at iteration {self.trainer.iter + 1}!")
-                # Force loop termination by setting current iteration to max_iter
                 self.trainer.iter = self.trainer.max_iter
 
 
@@ -123,7 +111,7 @@ def main():
     parser.add_argument("--val-ann", default=None, help="Path to validation COCO JSON")
     parser.add_argument("--num-classes", type=int,default=1,
                         help="Number of CUSTOM classes (EXCLUDING background)")
-    parser.add_argument("--max-iter", type=int, default=7000,
+    parser.add_argument("--max-iter", type=int, default=3000,
                         help="Total number of training iterations (~20-25 epochs for 1200 imgs)")
     parser.add_argument("--batch-size", type=int, default=4, help="Total batch size per iteration")
     parser.add_argument("--lr", type=float, default=0.00025, help="Base learning rate")
@@ -168,13 +156,13 @@ def main():
     cfg.SOLVER.IMS_PER_BATCH = args.batch_size
     cfg.SOLVER.BASE_LR = args.lr
     cfg.SOLVER.MAX_ITER = args.max_iter
-    cfg.SOLVER.STEPS = (5000, 6500)  # Decay learning rate towards the end
+    cfg.SOLVER.STEPS = (1800, 2550)  # Decay learning rate towards the end
     cfg.SOLVER.GAMMA = 0.1
 
     # Checkpoint saving and evaluation frequency
-    cfg.SOLVER.CHECKPOINT_PERIOD = 500
+    cfg.SOLVER.CHECKPOINT_PERIOD = 150
     if val_ds_name:
-        cfg.TEST.EVAL_PERIOD = 500  # Run COCO mAP evaluation every 500 steps
+        cfg.TEST.EVAL_PERIOD = 150  # Run COCO mAP evaluation every 150 steps
 
     # Model heads (class count EXCLUDES background, Detectron2 handles it internally)
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128
