@@ -3,25 +3,6 @@ Evaluation script for Mask R-CNN (Detectron2), MASK-ONLY, reported in an
 Ultralytics-YOLO-style summary but computed so the numbers are comparable
 to YOLO's own segmentation metrics.
 
-Note: Mask R-CNN's box head and mask head are two separate branches operating
-on the same proposals. This script deliberately ignores the box branch
-entirely -- both the AP evaluator and the Precision/Recall computation only
-ever look at `pred_masks` vs. GT `segmentation` (pixel-wise IoU), never at
-`pred_boxes` vs. GT `bbox`.
-
-Computes (masks only):
-  - AP50-95 & AP50, via the standard COCOEvaluator restricted to the "segm"
-    task, run with a near-zero score threshold so the PR-curve integration
-    is not truncated (this is what Ultralytics does internally too).
-  - Global Precision & Recall at a fixed confidence threshold (default 0.25,
-    matching YOLO's default val threshold), computed via a real greedy
-    mask-IoU-matching TP/FP/FN procedure.
-  - Pure GPU inference time (CUDA-event based, isolating the model forward
-    pass from CPU-side preprocessing / dataloading / H2D transfer). This
-    times the whole model (Mask R-CNN always runs both branches together),
-    but is reported here alongside the mask metrics since inference cost
-    isn't separable per-branch.
-
 Usage:
     python evaluate_test.py \
         --data-dir /path/to/dataset \
@@ -53,18 +34,16 @@ from detectron2.evaluation import COCOEvaluator, inference_on_dataset
 # Matching helpers (real mask-IoU-based TP/FP/FN, not count-based)
 # --------------------------------------------------------------------------- #
 
-def greedy_match(iou_matrix, pred_classes, gt_classes, iou_thresh):
+def greedy_match_flags(iou_matrix, pred_classes, gt_classes, iou_thresh):
     """
     Greedy one-to-one matching between predictions (rows, already sorted by
     descending confidence) and ground truth (columns), matching only within
     the same class and requiring IoU >= iou_thresh. Each GT can be matched
-    at most once. This mirrors the logic COCOEvaluator / Ultralytics use for
-    computing TP/FP/FN at a fixed threshold.
+    at most once.
     """
     num_pred, num_gt = iou_matrix.shape
     gt_matched = np.zeros(num_gt, dtype=bool)
-    tp = 0
-    fp = 0
+    is_tp = np.zeros(num_pred, dtype=bool)
 
     for i in range(num_pred):
         best_iou = iou_thresh
@@ -80,12 +59,23 @@ def greedy_match(iou_matrix, pred_classes, gt_classes, iou_thresh):
                 best_j = j
         if best_j >= 0:
             gt_matched[best_j] = True
-            tp += 1
-        else:
-            fp += 1
+            is_tp[i] = True
 
-    fn = int(num_gt - gt_matched.sum())
-    return tp, fp, fn
+    return is_tp
+
+
+def smooth(y, f=0.1):
+    """
+    Box-filter smoothing over a 1D curve, mirroring Ultralytics' logic.
+    Uses edge padding to avoid zero-dropoff artifacts at the boundaries,
+    while maintaining the exact original length (valid convolution).
+    """
+    nf = round(len(y) * f * 2) // 2 + 1  # filter width, forced odd
+    if nf <= 1 or len(y) < nf:
+        return y
+    pad = np.ones(nf // 2)
+    y_padded = np.concatenate((pad * y[0], y, pad * y[-1]))
+    return np.convolve(y_padded, np.ones(nf) / nf, mode="valid")
 
 
 def polygons_or_rle_to_rle(segm, height, width):
@@ -100,16 +90,18 @@ def polygons_or_rle_to_rle(segm, height, width):
     return rle
 
 
-def compute_mask_precision_recall(predictor, dataset_name, conf_thresh=0.25, iou_thresh=0.5):
+def compute_mask_pr_metrics(predictor, dataset_name, conf_thresh=0.25, iou_thresh=0.5):
     """
-    Computes global mask Precision/Recall at a fixed confidence threshold,
-    using real pixel-wise IoU matching (greedy, class-aware). Bounding boxes
-    are not used anywhere in this function.
+    Computes global mask Precision/Recall two ways:
+      - "fixed_*"   : P/R using predictions with score >= conf_thresh.
+      - "best_f1_*" : P/R at confidence maximizing F1 across full curve
+                      (comparable to YOLO's val Precision/Recall).
     """
     dataset_dicts = DatasetCatalog.get(dataset_name)
 
-    tp_mask = fp_mask = fn_mask = 0
-    skipped_no_gt_masks = 0
+    all_scores = []
+    all_tp = []
+    total_gt = 0
 
     for d in dataset_dicts:
         img = cv2.imread(d["file_name"])
@@ -117,55 +109,85 @@ def compute_mask_precision_recall(predictor, dataset_name, conf_thresh=0.25, iou
             continue
         height, width = img.shape[:2]
 
-        gt_anns = [a for a in d["annotations"] if a.get("iscrowd", 0) == 0]
-        gt_anns = [a for a in gt_anns if "segmentation" in a]
-        if len(gt_anns) == 0:
-            skipped_no_gt_masks += 1
-            continue
-
-        gt_classes = np.array([a["category_id"] for a in gt_anns], dtype=np.int64)
-        gt_rles = [polygons_or_rle_to_rle(a["segmentation"], height, width) for a in gt_anns]
+        # Vyzvednutí Ground Truth (GT)
+        gt_anns = [a for a in d.get("annotations", []) if a.get("iscrowd", 0) == 0 and "segmentation" in a]
+        if len(gt_anns) > 0:
+            gt_classes = np.array([a["category_id"] for a in gt_anns], dtype=np.int64)
+            gt_rles = [polygons_or_rle_to_rle(a["segmentation"], height, width) for a in gt_anns]
+            total_gt += len(gt_anns)
+        else:
+            gt_classes = np.array([], dtype=np.int64)
+            gt_rles = []
 
         outputs = predictor(img)
         instances = outputs["instances"].to("cpu")
 
-        keep = instances.scores >= conf_thresh
-        instances = instances[keep]
-        # sort remaining predictions by descending score for greedy matching
         order = torch.argsort(instances.scores, descending=True)
         instances = instances[order]
-
         num_pred = len(instances)
-        num_gt = len(gt_anns)
 
         if num_pred > 0 and instances.has("pred_masks"):
             pred_classes = instances.pred_classes.numpy()
-            # `pred_masks` SHOULD already be binary here, since predictor()
-            # runs detector_postprocess() -> paste_masks_in_image(threshold=0.5)
-            # internally. But that binarization happens implicitly inside
-            # detectron2 and depends on the exact call path / config, so we
-            # threshold explicitly here too rather than relying on it: a plain
-            # `.astype(np.uint8)` on genuinely continuous [0,1] probabilities
-            # would truncate toward zero (e.g. 0.8 -> 0) and silently corrupt
-            # every mask IoU computed below.
+            pred_scores = instances.scores.numpy()
             pred_masks_raw = instances.pred_masks.numpy()
             pred_masks = (pred_masks_raw >= 0.5).astype(np.uint8)
             pred_rles = [maskUtils.encode(np.asfortranarray(m)) for m in pred_masks]
-            iou_mat = np.asarray(maskUtils.iou(pred_rles, gt_rles, [0] * len(gt_rles)))
-            m_tp, m_fp, m_fn = greedy_match(iou_mat, pred_classes, gt_classes, iou_thresh)
-        else:
-            m_tp, m_fp, m_fn = 0, 0, num_gt
 
-        tp_mask += m_tp
-        fp_mask += m_fp
-        fn_mask += m_fn
+            if len(gt_rles) > 0:
+                iou_mat = np.asarray(maskUtils.iou(pred_rles, gt_rles, [0] * len(gt_rles)))
+                is_tp = greedy_match_flags(iou_mat, pred_classes, gt_classes, iou_thresh)
+            else:
+                # Obrázky bez GT: Všechny detekce modelu jsou False Positives
+                is_tp = np.zeros(num_pred, dtype=bool)
 
-    if skipped_no_gt_masks:
-        print(f"Note: skipped {skipped_no_gt_masks} image(s) with no GT segmentation masks.")
+            all_scores.append(pred_scores)
+            all_tp.append(is_tp)
 
-    precision = tp_mask / (tp_mask + fp_mask + 1e-16)
-    recall = tp_mask / (tp_mask + fn_mask + 1e-16)
-    return precision, recall
+    if not all_scores or total_gt == 0:
+        return {
+            "fixed_conf": conf_thresh, "fixed_precision": 0.0, "fixed_recall": 0.0,
+            "best_f1_conf": 0.0, "best_f1_precision": 0.0, "best_f1_recall": 0.0, "best_f1": 0.0,
+        }
+
+    scores = np.concatenate(all_scores)
+    tp_flags = np.concatenate(all_tp)
+
+    order = np.argsort(-scores)
+    scores = scores[order]
+    tp_flags = tp_flags[order]
+
+    tp_cum = np.cumsum(tp_flags)
+    fp_cum = np.cumsum(~tp_flags)
+
+    precision_curve = tp_cum / np.maximum(tp_cum + fp_cum, 1e-16)
+    recall_curve = tp_cum / total_gt
+    f1_curve = 2 * precision_curve * recall_curve / np.maximum(precision_curve + recall_curve, 1e-16)
+
+    # --- Fixed operating point: score >= conf_thresh ---
+    keep = scores >= conf_thresh
+    if keep.any():
+        idx_fixed = np.nonzero(keep)[0][-1]
+        fixed_precision = float(precision_curve[idx_fixed])
+        fixed_recall = float(recall_curve[idx_fixed])
+    else:
+        fixed_precision, fixed_recall = 0.0, 0.0
+
+    # --- Best-F1 operating point, mirroring Ultralytics ---
+    idx_best = int(smooth(f1_curve, 0.1).argmax())
+    best_f1_conf = float(scores[idx_best])
+    best_f1_precision = float(precision_curve[idx_best])
+    best_f1_recall = float(recall_curve[idx_best])
+    best_f1 = float(f1_curve[idx_best])
+
+    return {
+        "fixed_conf": conf_thresh,
+        "fixed_precision": fixed_precision,
+        "fixed_recall": fixed_recall,
+        "best_f1_conf": best_f1_conf,
+        "best_f1_precision": best_f1_precision,
+        "best_f1_recall": best_f1_recall,
+        "best_f1": best_f1,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -174,17 +196,9 @@ def compute_mask_precision_recall(predictor, dataset_name, conf_thresh=0.25, iou
 
 def benchmark_gpu_inference(predictor, dataset_name, num_images=100, warmup_iters=10):
     """
-    Measures pure GPU execution time of the model forward pass, excluding
-    disk I/O, CPU-side resize/normalize preprocessing and any postprocessing
-    that happens outside the model. All CPU-side work (image resize with the
-    predictor's own augmentation, tensor conversion, host-to-device copy) is
-    done up front, outside the timed region, so CUDA events measure model
-    compute only.
-
-    Note: Mask R-CNN's box and mask branches share the backbone/RPN/ROI
-    pooling and run in a single forward pass, so this latency is for the
-    whole model -- it cannot be isolated to "just the mask head" without
-    modifying the model internals.
+    Measures pure GPU execution time of the model forward pass.
+    Performs H2D transfers iteratively, avoiding full dataset VRAM allocation.
+    Timing events are recorded asynchronously to prevent pipeline stalls.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
@@ -197,7 +211,7 @@ def benchmark_gpu_inference(predictor, dataset_name, num_images=100, warmup_iter
     model = predictor.model
     model.eval()
 
-    prepared_inputs = []
+    prepared_cpu_inputs = []
     with torch.no_grad():
         for d in dataset_dicts:
             original_image = cv2.imread(d["file_name"])
@@ -207,31 +221,35 @@ def benchmark_gpu_inference(predictor, dataset_name, num_images=100, warmup_iter
                 original_image = original_image[:, :, ::-1]
             height, width = original_image.shape[:2]
             image = predictor.aug.get_transform(original_image).apply_image(original_image)
-            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
-            image = image.to(device)  # do the H2D copy now, outside the timed loop
-            prepared_inputs.append({"image": image, "height": height, "width": width})
+            image_tensor = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+            prepared_cpu_inputs.append({"image_tensor": image_tensor, "height": height, "width": width})
 
-    if not prepared_inputs:
-        print("Warning: no images available for benchmarking.")
+    if not prepared_cpu_inputs:
+        print("Warning: no valid images available for benchmarking.")
         return 0.0, 0.0
 
-    # Warmup (compiles cuDNN kernels, allocates workspace, etc.)
+    # Warmup pass
     with torch.no_grad():
-        for inp in prepared_inputs[:warmup_iters]:
-            _ = model([inp])
+        for inp in prepared_cpu_inputs[:warmup_iters]:
+            gpu_input = [{"image": inp["image_tensor"].to(device), "height": inp["height"], "width": inp["width"]}]
+            _ = model(gpu_input)
     torch.cuda.synchronize()
 
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-    latencies = []
+    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(len(prepared_cpu_inputs))]
+    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(len(prepared_cpu_inputs))]
 
+    # Záznam událostí bez synchronizace uvnitř smyčky pro maximální propustnost
     with torch.no_grad():
-        for inp in prepared_inputs:
-            start_event.record()
-            _ = model([inp])
-            end_event.record()
-            torch.cuda.synchronize()
-            latencies.append(start_event.elapsed_time(end_event))
+        for i, inp in enumerate(prepared_cpu_inputs):
+            gpu_input = [{"image": inp["image_tensor"].to(device), "height": inp["height"], "width": inp["width"]}]
+            start_events[i].record()
+            _ = model(gpu_input)
+            end_events[i].record()
+
+    # Jednorázová synchronizace na konci
+    torch.cuda.synchronize()
+
+    latencies = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
 
     avg_latency_ms = float(np.mean(latencies))
     fps = 1000.0 / avg_latency_ms
@@ -248,13 +266,11 @@ def main():
     parser.add_argument("--weights", required=True, help="Path to trained weights (model_best.pth)")
     parser.add_argument("--num-classes", type=int, default=1, help="Number of custom classes (excluding background)")
     parser.add_argument("--conf-thresh", type=float, default=0.25,
-                        help="Confidence threshold for Precision/Recall, matching YOLO default (0.25)")
+                        help="Fixed confidence threshold for the 'fixed' P/R operating point.")
     parser.add_argument("--iou-thresh", type=float, default=0.5,
                         help="Mask IoU threshold for TP matching in Precision/Recall (default: 0.5)")
     parser.add_argument("--map-score-thresh", type=float, default=0.001,
-                        help="Score threshold used ONLY for the COCO mAP eval pass. Must stay low "
-                             "(YOLO/COCO convention) so the PR curve is not truncated; do not set this "
-                             "to --conf-thresh.")
+                        help="Score threshold used for full PR-curve integration.")
     parser.add_argument("--benchmark-images", type=int, default=100,
                         help="Number of images to use for the pure-GPU latency benchmark")
     args = parser.parse_args()
@@ -267,15 +283,7 @@ def main():
     # 1. Register Test Dataset
     register_coco_instances(test_ds_name, {}, test_json_path, test_img_path)
 
-    # 2. Configure Model.
-    # IMPORTANT: SCORE_THRESH_TEST is kept low here on purpose. COCO AP is an
-    # integral over the full precision/recall curve across all confidence
-    # levels; truncating predictions at 0.25 before the evaluator sees them
-    # would silently drop low-confidence-but-correct detections and make
-    # AP50 / AP50-95 incomparable to YOLO's own AP, which is computed the
-    # same low-threshold way internally. The 0.25 cutoff is only applied
-    # afterwards, in compute_mask_precision_recall, to match YOLO's
-    # *displayed* P/R (which YOLO also reports at conf=0.25 by default).
+    # 2. Configure Model
     cfg = get_cfg()
     config_path = "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
     cfg.merge_from_file(model_zoo.get_config_file(config_path))
@@ -287,9 +295,7 @@ def main():
 
     predictor = DefaultPredictor(cfg)
 
-    # 3. Standard COCO mAP Evaluation, MASKS ONLY (AP50-95 and AP50).
-    # tasks=("segm",) tells COCOEvaluator to skip box AP entirely -- it
-    # never even computes bbox precision/recall internally.
+    # 3. Standard COCO mAP Evaluation (MASKS ONLY)
     print("\n==================================================")
     print(" 1. COCO Mask AP Evaluation (AP50-95 & AP50)")
     print("==================================================")
@@ -301,37 +307,40 @@ def main():
     segm_ap50_95 = coco_results["segm"]["AP"]
     segm_ap50 = coco_results["segm"]["AP50"]
 
-    # 4. Global mask Precision / Recall at conf = args.conf_thresh, via real
-    # pixel-wise mask IoU matching. Boxes play no role here.
+    # 4. Global Mask Precision / Recall
     print("\n==================================================")
-    print(f" 2. Mask Precision / Recall @ conf={args.conf_thresh}, IoU={args.iou_thresh}")
+    print(f" 2. Mask Precision / Recall (IoU={args.iou_thresh})")
     print("==================================================")
-    precision, recall = compute_mask_precision_recall(
+    pr = compute_mask_pr_metrics(
         predictor, test_ds_name, conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh
     )
+    print(f"Fixed   @ conf={pr['fixed_conf']:.3f}   : P={pr['fixed_precision']:.4f}  R={pr['fixed_recall']:.4f}")
+    print(f"Best-F1 @ conf={pr['best_f1_conf']:.3f}   : P={pr['best_f1_precision']:.4f}  "
+          f"R={pr['best_f1_recall']:.4f}  F1={pr['best_f1']:.4f}  <- comparable to YOLO's val P/R")
 
-    # 5. Pure GPU Inference Speed (whole model -- see note in the function)
+    # 5. Pure GPU Inference Speed
     gpu_latency_ms, gpu_fps = benchmark_gpu_inference(
         predictor, test_ds_name, num_images=args.benchmark_images
     )
 
-    # ==================================================
-    # 6. ULTRALYTICS-STYLE SUMMARY TABLE OUTPUT (masks only)
-    # ==================================================
-    print("\n" + "=" * 65)
+    # 6. Summary Output
+    print("\n" + "=" * 78)
     print(" ULTRALYTICS-STYLE MASK SUMMARY (TEST SET)")
-    print("=" * 65)
-    print(f"{'Task':<12} {'Precision':<12} {'Recall':<12} {'mAP50':<12} {'mAP50-95':<12}")
-    print("-" * 65)
-    print(f"{'Mask (Seg)':<12} {precision:<12.4f} {recall:<12.4f} "
+    print("=" * 78)
+    print(f"{'Task':<20} {'Precision':<12} {'Recall':<12} {'mAP50':<12} {'mAP50-95':<12}")
+    print("-" * 78)
+    print(f"{'Mask (Seg) fixed':<20} {pr['fixed_precision']:<12.4f} {pr['fixed_recall']:<12.4f} "
           f"{segm_ap50 / 100.0:<12.4f} {segm_ap50_95 / 100.0:<12.4f}")
-    print("-" * 65)
+    print(f"{'Mask (Seg) best-F1':<20} {pr['best_f1_precision']:<12.4f} {pr['best_f1_recall']:<12.4f} "
+          f"{segm_ap50 / 100.0:<12.4f} {segm_ap50_95 / 100.0:<12.4f}   <- compare to YOLO")
+    print("-" * 78)
     print(f"Pure GPU Inference Latency : {gpu_latency_ms:.2f} ms / image")
     print(f"Pure GPU Inference Speed   : {gpu_fps:.1f} FPS")
-    print(f"P/R Confidence Threshold   : {args.conf_thresh}")
+    print(f"Fixed P/R conf threshold   : {pr['fixed_conf']}")
+    print(f"Best-F1 P/R conf threshold : {pr['best_f1_conf']:.4f} (found automatically, like YOLO)")
     print(f"P/R Mask IoU Threshold     : {args.iou_thresh}")
-    print(f"mAP Eval Score Threshold   : {args.map_score_thresh} (kept low; see comment in main())")
-    print("=" * 65 + "\n")
+    print(f"mAP Eval Score Threshold   : {args.map_score_thresh}")
+    print("=" * 78 + "\n")
 
 
 if __name__ == "__main__":
