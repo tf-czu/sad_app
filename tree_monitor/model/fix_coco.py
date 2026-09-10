@@ -13,3 +13,4 @@ def fix_coco_json(json_path, output_path):
 
 fix_coco_json("train/_annotations.coco.json", "train/_annotations_fixed.json")
 fix_coco_json("valid/_annotations.coco.json", "valid/_annotations_fixed.json")
+fix_coco_json("test/_annotations.coco.json", "test/_annotations_fixed.json")
